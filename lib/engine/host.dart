@@ -251,7 +251,11 @@ String? checkTurn({
   if (newTiles.toSet().length != newTiles.length) return 'A tile appears twice.';
   final startSet = startTiles.toSet();
   final newSet = newTiles.toSet();
-  if (!newSet.containsAll(startSet)) return 'Tiles already on the table must stay on the table.';
+  if (!newSet.containsAll(startSet)) {
+    final missing = startSet.difference(newSet);
+    if (missing.every(isJoker)) return 'Play the joker you took back before ending your turn.';
+    return 'Tiles already on the table must stay on the table.';
+  }
   final played = newSet.difference(startSet);
   final rackSet = rack.toSet();
   if (!rackSet.containsAll(played)) return 'Those tiles are not in your rack.';
@@ -463,7 +467,9 @@ class GameHost {
       case PreviewAction(:final board):
         // Only accept previews that keep table tiles and use the player's rack.
         final tiles = board.allTiles.toSet();
-        if (!tiles.containsAll(turnStart.allTiles)) return const ActionResult.fail('bad preview');
+        // A table joker may be missing mid-turn: it was reclaimed and is in the player's hand
+        // until it's played again (the commit check makes sure it is).
+        if (!turnStart.allTiles.every((t) => tiles.contains(t) || isJoker(t))) return const ActionResult.fail('bad preview');
         final rack = racks[playerId]!.toSet();
         final startSet = turnStart.allTiles.toSet();
         if (!tiles.every((t) => startSet.contains(t) || rack.contains(t))) return const ActionResult.fail('bad preview');

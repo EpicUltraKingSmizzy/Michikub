@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'meld.dart';
+import 'tiles.dart';
 
 /// Tunable layout constants.
 class LayoutTuning {
@@ -247,6 +248,21 @@ class Layout {
   /// Moves a whole set (as given) so its first tile lands at [row], [col].
   static Board moveSet(Board board, List<int> tiles, int row, int col) =>
       place(board, tiles, row, col);
+
+  /// Joker reclaim: puts [tile] exactly where [joker] sits (same set, same cell) and takes
+  /// the joker off the board. Returns null when the joker isn't on the board or the set
+  /// would not be valid with [tile] in its place.
+  static Board? swapJoker(Board board, int tile, int joker) {
+    if (!isJoker(joker) || isJoker(tile)) return null;
+    final b = board.copy()..removeTiles([tile]);
+    final p = b.find(joker);
+    if (p == null) return null;
+    final blk = b.blockOf(joker)!;
+    final swapped = [for (final t in blk.tiles) t == joker ? tile : t];
+    if (!isValidMeld(swapped)) return null;
+    b.rows[p.row][p.col] = tile;
+    return b;
+  }
 
   /// The Make space button. Shifts the top half of the tile rows (rounded up)
   /// one row up, opening an empty row. Returns null (does nothing) when an

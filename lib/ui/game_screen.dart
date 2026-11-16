@@ -79,6 +79,8 @@ class _GameScreenState extends State<GameScreen> {
   final Set<int> _selected = {};
   final Set<int> _flash = {};
   final Set<int> _shine = {};
+  /// Table jokers taken back this turn (in hand until they're played again).
+  final Set<int> _reclaimed = {};
   final Map<int, _Spawn> _spawns = {};
   final List<_BackFlight> _flights = [];
   _Drag? _drag;
@@ -136,9 +138,10 @@ class _GameScreenState extends State<GameScreen> {
       _history.clear();
       _selected.removeWhere((t) => !nv.rack.contains(t));
       _drag = null;
+      _reclaimed.clear();
     }
     final order = _rackOrders.putIfAbsent(nv.me, () => []);
-    order.removeWhere((t) => !isRackGap(t) && !nv.rack.contains(t));
+    order.removeWhere((t) => !isRackGap(t) && !nv.rack.contains(t) && !_reclaimed.contains(t));
     final fresh = nv.rack.where((t) => !order.contains(t)).toList();
     order.addAll(fresh);
     if (nv.myTurn && turnChanged) {
@@ -344,7 +347,7 @@ class _GameScreenState extends State<GameScreen> {
     if (g.inRack(d.pointer)) {
       final back = tiles.where(_onBoard).toList();
       if (back.isNotEmpty) {
-        if (!_myTurn || back.any(_startTiles.contains)) {
+        if (!_myTurn || back.any((t) => _startTiles.contains(t) && !_reclaimed.contains(t))) {
           _flashRed(tiles, 'Tiles already on the table stay on the table.');
           return;
         }
@@ -374,6 +377,7 @@ class _GameScreenState extends State<GameScreen> {
       setState(() {});
       return;
     }
+    if (cell.row < working.rowCount && _tryReclaim(tiles, working.rows[cell.row][cell.col])) return;
     final why = _boardBlock(tiles);
     if (why != null) {
       _flashRed(tiles, why);
@@ -381,6 +385,31 @@ class _GameScreenState extends State<GameScreen> {
     }
     _setWorking(_placeAt(tiles, cell.row, cell.col, cell.frac), moved: tiles);
   }
+
+  /// Joker reclaim: one rack tile dropped (or tapped) onto a joker that was on the table when
+  /// the turn began takes its place, if it's the tile the joker stood for. The joker goes to
+  /// the rack and must be played again before the turn ends. Returns true when handled.
+  bool _tryReclaim(List<int> tiles, int target) {
+    if (tiles.length != 1 || target < 0 || !isJoker(target) || !_myTurn) return false;
+    final t = tiles.first;
+    if (isJoker(t) || _onBoard(t) || !_startTiles.contains(target) || working.find(target) == null) return false;
+    final swapped = Layout.swapJoker(working, t, target);
+    if (swapped == null) return false;
+    if (!_melded) {
+      _flashRed([t, target], 'Make your first meld before taking a joker back.');
+      return true;
+    }
+    _reclaimed.add(target);
+    _order
+      ..remove(target)
+      ..add(target);
+    _setWorking(swapped, moved: [t]);
+    _showToast('Joker taken back. Play it before you end your turn.');
+    return true;
+  }
+
+  /// Reclaimed jokers that are still in the rack.
+  List<int> get _jokersInHand => _reclaimed.where((j) => working.find(j) == null).toList();
 
   Board _placeAt(List<int> tiles, int row, int col, double frac) {
     final tmp = working.copy()..removeTiles(tiles);
@@ -414,6 +443,7 @@ class _GameScreenState extends State<GameScreen> {
   /// Tap a tile, then tap a set: the tile joins the set if that makes a
   /// valid set. Jokers and group tiles go to the end nearer the tap.
   void _autoPlace(List<int> sel, int target) {
+    if (_tryReclaim(sel, target)) return;
     final why = _boardBlock(sel);
     if (why != null) {
       _flashRed(sel, why);
@@ -464,7 +494,7 @@ class _GameScreenState extends State<GameScreen> {
   void _onRackTapUp(TapUpDetails d) {
     final back = _selected.where(_onBoard).toList();
     if (back.isEmpty || !_myTurn) return;
-    if (back.any(_startTiles.contains)) {
+    if (back.any((t) => _startTiles.contains(t) && !_reclaimed.contains(t))) {
       _flashRed(back, 'Tiles already on the table stay on the table.');
       return;
     }
@@ -526,6 +556,11 @@ class _GameScreenState extends State<GameScreen> {
       await s.act(const DrawAction());
       return;
     }
+    final held = _jokersInHand;
+    if (held.isNotEmpty) {
+      _flashRed(held, 'Play the joker you took back before ending your turn.');
+      return;
+    }
     final err = checkTurn(start: v!.turnStartBoard, proposed: working, rack: v!.rack, melded: v!.mySeat.melded, rules: v!.rules);
     if (err != null) {
       _flashRed(working.invalidBlocks.expand((b) => b.tiles).toList(), err);
@@ -555,6 +590,7 @@ class _GameScreenState extends State<GameScreen> {
     working = v!.turnStartBoard.copy();
     _history.clear();
     _selected.clear();
+    _reclaimed.clear();
     final rack = v!.rack.toSet();
     final restored = _turnStartOrder.where((t) => isRackGap(t) || rack.contains(t)).toList();
     final extra = v!.rack.where((t) => !restored.contains(t));

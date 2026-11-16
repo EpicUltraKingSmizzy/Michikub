@@ -71,6 +71,10 @@ enum BotStepType {
 
   /// A tile taken out of a set on the board and set down alone.
   removeTile,
+
+  /// Joker reclaim: a rack tile put exactly where a table joker sits (the tile the joker
+  /// stood for); the joker is taken in hand and must be played again this turn.
+  swapJoker,
 }
 
 /// One MOVE: a single visible action on the table. Every step counts as exactly 1 move.
@@ -106,12 +110,14 @@ class BotStep {
     : this._(BotStepType.moveSet, tile: setTile, targetSetTile: toSetTile, atEnd: atEnd);
   const BotStep.split(int beforeTile) : this._(BotStepType.split, tile: beforeTile);
   const BotStep.removeTile(int tile) : this._(BotStepType.removeTile, tile: tile);
+  const BotStep.swapJoker(int tile, int joker) : this._(BotStepType.swapJoker, tile: tile, targetSetTile: joker);
 
   bool get isNewSet => type == BotStepType.newSet;
   bool get isExtension => type == BotStepType.extend;
 
   /// True when the step brings tiles from the rack (rather than moving table tiles).
-  bool get fromRack => type == BotStepType.newSet || type == BotStepType.extend || type == BotStepType.tileAt;
+  bool get fromRack =>
+      type == BotStepType.newSet || type == BotStepType.extend || type == BotStepType.tileAt || type == BotStepType.swapJoker;
 
   /// Every step is one move.
   int get moveCount => 1;
@@ -119,7 +125,7 @@ class BotStep {
   /// Rack tiles this step puts on the board.
   int get tileCount => switch (type) {
     BotStepType.newSet => tiles.length,
-    BotStepType.extend || BotStepType.tileAt => 1,
+    BotStepType.extend || BotStepType.tileAt || BotStepType.swapJoker => 1,
     _ => 0,
   };
 
@@ -137,8 +143,15 @@ class BotStep {
 class BotPlay {
   final List<BotStep> steps;
   const BotPlay(this.steps);
-  int get tileCount => steps.fold(0, (s, x) => s + x.tileCount);
+  /// Rack tiles this play puts on the board (a reclaimed joker played again doesn't count).
+  int get tileCount => rackTiles.difference(reclaimedJokers).length;
   int get moveCount => steps.length;
+
+  /// Table jokers this play takes back (and plays again).
+  Set<int> get reclaimedJokers => {
+    for (final s in steps)
+      if (s.type == BotStepType.swapJoker) s.targetSetTile!,
+  };
 
   /// Rack tiles used, for telling plays apart.
   Set<int> get rackTiles => {
@@ -258,7 +271,9 @@ List<List<int>> bestCombination(List<List<int>> cands, {int minPoints = 0, int? 
 ///  * a rack tile added to an end of a table set (1 move);
 ///  * two rack tiles put down together, plus a spare tile moved over from a table set that
 ///    stays valid without it (2 moves);
-///  * a table run split so that a rack tile can start the second half (2 moves).
+///  * a table run split so that a rack tile can start the second half (2 moves);
+///  * a joker reclaim: a rack tile swapped in for a table joker, then the joker played
+///    again at the end of a set or in a new set with two rack tiles (2 moves).
 List<BotPlay> findPlays(Board board, List<int> rack, {bool rackOnly = false}) {
   final out = <BotPlay>[];
   for (final m in candidateMelds(rack)) {
@@ -320,6 +335,30 @@ List<BotPlay> findPlays(Board board, List<int> rack, {bool rackOnly = false}) {
       }
     }
   }
+  // Joker reclaim.
+  final real = distinctRack.where((t) => !isJoker(t)).toList();
+  for (final blk in blocks) {
+    for (final j in blk.tiles.where(isJoker)) {
+      for (final t in real) {
+        final after = Layout.swapJoker(board, t, j);
+        if (after == null) continue;
+        final swap = BotStep.swapJoker(t, j);
+        for (final tb in after.blocks.where((b) => isValidMeld(b.tiles))) {
+          if (isValidMeld([...tb.tiles, j])) {
+            out.add(BotPlay([swap, BotStep.moveTile(j, toSetTile: tb.tiles.first, index: tb.length)]));
+          } else if (isValidMeld([j, ...tb.tiles])) {
+            out.add(BotPlay([swap, BotStep.moveTile(j, toSetTile: tb.tiles.first, index: 0)]));
+          }
+        }
+        final rest = [...rack]..remove(t);
+        for (final m in candidateMelds([...rest, j])) {
+          if (m.length == 3 && m.contains(j) && m.where(isJoker).length == 1) {
+            out.add(BotPlay([swap, BotStep.newSet(m)]));
+          }
+        }
+      }
+    }
+  }
   // Keep only plays that really end valid (and use each rack tile once).
   return out.where((p) {
     final tiles = <int>[
@@ -327,7 +366,10 @@ List<BotPlay> findPlays(Board board, List<int> rack, {bool rackOnly = false}) {
         if (s.fromRack) ...(s.isNewSet ? s.tiles : [s.tile!]),
     ];
     if (tiles.toSet().length != tiles.length) return false;
-    return applyBotPlay(board, p).isValid;
+    final end = applyBotPlay(board, p);
+    // Every table tile (reclaimed jokers included) must be back on the board.
+    if (!end.allTiles.toSet().containsAll(board.allTiles)) return false;
+    return end.isValid;
   }).toList();
 }
 
@@ -438,6 +480,8 @@ Board applyBotStep(Board board, BotStep step) {
       return Layout.split(board, step.tile!);
     case BotStepType.removeTile:
       return _alone(board, [step.tile!]);
+    case BotStepType.swapJoker:
+      return Layout.swapJoker(board, step.tile!, step.targetSetTile!) ?? board;
   }
 }
 
@@ -458,9 +502,11 @@ int stepPauseMs(BotStep step) => switch (step.kind) {
 /// True when every step of [play], applied to [board], leaves a valid table.
 bool playStaysValid(Board board, BotPlay play) {
   var b = board;
+  final tableTiles = board.allTiles.toSet();
   for (final st in play.steps) {
     b = applyBotStep(b, st);
-    if (!b.isValid) return false;
+    // A reclaimed joker still in hand can't be committed either.
+    if (!b.isValid || !b.allTiles.toSet().containsAll(tableTiles)) return false;
   }
   return true;
 }

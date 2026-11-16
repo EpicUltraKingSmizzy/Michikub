@@ -65,5 +65,18 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>FlutterDeepLinkingEnabled</key>
+	<false/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>michikub.join</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>michikub</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

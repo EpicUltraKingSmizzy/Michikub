@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -6,6 +9,8 @@ import 'app/bot_roster.dart';
 import 'app/prefs.dart';
 import 'engine/host.dart';
 import 'engine/rules.dart';
+import 'net/invite_link.dart';
+import 'ui/online_screens.dart';
 import 'ui/setup_screens.dart';
 import 'ui/home.dart';
 import 'ui/theme.dart';
@@ -18,10 +23,14 @@ Future<void> main() async {
   runApp(const MichikubApp());
 }
 
+/// For opening screens from outside a widget (deep links).
+final appNavigator = GlobalKey<NavigatorState>();
+
 class MichikubApp extends StatelessWidget {
   const MichikubApp({super.key});
   @override
   Widget build(BuildContext context) => MaterialApp(
+        navigatorKey: appNavigator,
         title: 'Michikub',
         debugShowCheckedModeBanner: false,
         theme: MK.theme(),
@@ -38,9 +47,20 @@ class _Start extends StatefulWidget {
 }
 
 class _StartState extends State<_Start> {
+  StreamSubscription<Uri>? _links;
+
   @override
   void initState() {
     super.initState();
+    // michikub://join/ABCD (from a shared invite) opens Join a game with the code filled in.
+    // The stream also delivers the link that launched the app.
+    if (!kIsWeb) {
+      try {
+        _links = AppLinks().uriLinkStream.listen(_openLink, onError: (_) {});
+      } catch (_) {
+        // No link support on this platform.
+      }
+    }
     final demo = Uri.base.queryParameters['demo'];
     if (kIsWeb && demo != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -61,6 +81,21 @@ class _StartState extends State<_Start> {
         }
       });
     }
+  }
+
+  void _openLink(Uri uri) {
+    final code = codeFromAppLink(uri);
+    final nav = appNavigator.currentState;
+    if (code == null || nav == null) return;
+    // Back to Home, then Join with the code (leaving any open lobby or setup screen).
+    nav.popUntil((r) => r.isFirst);
+    nav.push(MaterialPageRoute(builder: (_) => JoinScreen(initialCode: code)));
+  }
+
+  @override
+  void dispose() {
+    _links?.cancel();
+    super.dispose();
   }
 
   @override

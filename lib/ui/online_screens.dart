@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../app/bot_roster.dart';
 import '../app/prefs.dart';
 import '../engine/host.dart';
+import '../net/invite_link.dart';
 import '../net/online.dart';
 import '../net/peer.dart';
 import 'avatar.dart';
@@ -32,6 +34,22 @@ class _HostLobbyScreenState extends State<HostLobbyScreen> {
     net.removeListener(_changed);
     if (!_started) net.shutdown();
     super.dispose();
+  }
+
+  /// Copies "Come play Michikub with me!" + the room code + the join link, ready to paste in a message.
+  void _copyInvite(String code) {
+    Clipboard.setData(ClipboardData(text: inviteShareText(code)));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invite copied. Paste it in a message to your friends.')));
+  }
+
+  /// Opens the phone's share sheet with the invite (any chat app, SMS, email...).
+  Future<void> _shareInvite(String code) async {
+    try {
+      await SharePlus.instance.share(ShareParams(text: inviteShareText(code), subject: 'Come play Michikub with me!'));
+    } catch (_) {
+      // No share sheet here (e.g. some desktop browsers): copy instead.
+      if (mounted) _copyInvite(code);
+    }
   }
 
   Future<void> _manualInvite() async {
@@ -113,13 +131,15 @@ class _HostLobbyScreenState extends State<HostLobbyScreen> {
                 else
                   SelectableText(net.code, style: MK.title(40).copyWith(color: MK.goldLight, letterSpacing: 6)),
                 if (net.error != null) Text(net.error!, style: MK.body(12, color: MK.danger)),
-                Text('Friends tap Join a game and type this code. Only connection details pass through the free matchmaking service.',
+                Text('Tap Share to send friends a link that opens Michikub straight to this room, or they can tap Join a game and type the code. Only connection details pass through the free matchmaking service.',
                     style: MK.body(11, color: MK.gold)),
               ]),
             ),
             const SizedBox(width: 12),
             Column(children: [
-              GoldButton('Copy code', icon: Icons.copy, compact: true, onPressed: net.code.isEmpty ? null : () => Clipboard.setData(ClipboardData(text: net.code))),
+              GoldButton('Share', icon: Icons.share, compact: true, onPressed: net.code.isEmpty ? null : () => _shareInvite(net.code)),
+              const SizedBox(height: 8),
+              GoldButton('Copy invite', icon: Icons.copy, compact: true, crimson: true, onPressed: net.code.isEmpty ? null : () => _copyInvite(net.code)),
               const SizedBox(height: 8),
               GoldButton('Invite by message', icon: Icons.message_outlined, compact: true, crimson: true, onPressed: net.full ? null : _manualInvite),
             ]),
@@ -173,7 +193,9 @@ class _HostLobbyScreenState extends State<HostLobbyScreen> {
 }
 
 class JoinScreen extends StatefulWidget {
-  const JoinScreen({super.key});
+  /// A room code to fill in (from a michikub://join/CODE link).
+  final String? initialCode;
+  const JoinScreen({super.key, this.initialCode});
   @override
   State<JoinScreen> createState() => _JoinScreenState();
 }
@@ -181,7 +203,7 @@ class JoinScreen extends StatefulWidget {
 class _JoinScreenState extends State<JoinScreen> {
   final prefs = AppPrefs.instance;
   late final nameCtl = TextEditingController(text: prefs.name);
-  final codeCtl = TextEditingController();
+  late final codeCtl = TextEditingController(text: widget.initialCode ?? '');
   final inviteCtl = TextEditingController();
   String? reply;
   String? err;
@@ -250,6 +272,14 @@ class _JoinScreenState extends State<JoinScreen> {
                   controller: codeCtl,
                   textCapitalization: TextCapitalization.characters,
                   maxLength: 6,
+                  // Pasting a whole invite ("Come play Michikub with me! ... michikub://join/ABCD") keeps just the code.
+                  inputFormatters: [
+                    TextInputFormatter.withFunction((old, nu) {
+                      if (nu.text.length <= 6) return nu;
+                      final c = codeFromJoinLink(nu.text);
+                      return c == null ? nu : TextEditingValue(text: c, selection: TextSelection.collapsed(offset: c.length));
+                    }),
+                  ],
                   style: MK.title(22).copyWith(letterSpacing: 4),
                   decoration: const InputDecoration(labelText: 'Room code', counterText: ''),
                   onSubmitted: (_) => _joinCode(),

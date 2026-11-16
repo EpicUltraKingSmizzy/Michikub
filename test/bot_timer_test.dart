@@ -21,7 +21,9 @@ GameHost botGame(int seconds, List<int> rack) {
     ],
     rules: const HouseRules(firstMeld: 0, turnSeconds: 0),
     test: TestTools(enabled: true, timerOverride: seconds, seed: 1),
-  )..startRound();
+  )
+    ..firstStarter = 0 // the bot moves first in these tests
+    ..startRound();
   final s = rack.toSet();
   h.racks['me']!.removeWhere(s.contains);
   h.pile.removeWhere(s.contains);

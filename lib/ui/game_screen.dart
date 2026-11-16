@@ -26,6 +26,9 @@ class TableTuning {
   static const shineMs = 750;
   static const toastMs = 2600;
 
+  /// How long the "`Name` starts" banner shows at the start of each round.
+  static const starterBannerMs = 2200;
+
   /// Empty columns kept in view right of the widest set (see _boardView).
   static const spareCols = 3;
 }
@@ -81,6 +84,11 @@ class _GameScreenState extends State<GameScreen> {
   _Drag? _drag;
   int _drawSeq = -1, _noticeSeq = -1;
   String? _toast;
+
+  /// The "`Name` starts" banner text, shown briefly when a round begins.
+  String? _starterBanner;
+  int _bannerRound = 0;
+  Timer? _bannerTimer;
   Timer? _toastTimer, _ticker;
   DateTime? _deadline;
   bool _clockRunning = false;
@@ -102,6 +110,7 @@ class _GameScreenState extends State<GameScreen> {
     s.removeListener(_onSession);
     _ticker?.cancel();
     _toastTimer?.cancel();
+    _bannerTimer?.cancel();
     super.dispose();
   }
 
@@ -156,6 +165,21 @@ class _GameScreenState extends State<GameScreen> {
     if (nv.noticeSeq != _noticeSeq) {
       if (_noticeSeq >= 0 && nv.notice != null) _showToast(nv.notice!);
       _noticeSeq = nv.noticeSeq;
+    }
+    if (nv.round != _bannerRound && nv.result == null && nv.starter != null) {
+      _bannerRound = nv.round;
+      final who = nv.seats.where((x) => x.info.id == nv.starter).firstOrNull;
+      if (who != null) {
+        _starterBanner = '${who.info.name} starts';
+        _bannerTimer?.cancel();
+        _bannerTimer = null;
+      }
+    }
+    // Pass-and-play: the banner waits until the cover screen is dismissed, then shows on the table.
+    if (_starterBanner != null && _bannerTimer == null && s.coverFor == null) {
+      _bannerTimer = Timer(const Duration(milliseconds: TableTuning.starterBannerMs), () {
+        if (mounted) setState(() => _starterBanner = null);
+      });
     }
     _deadline = nv.msLeft == null ? null : DateTime.now().add(Duration(milliseconds: nv.msLeft!));
     _clockRunning = nv.clockRunning;
@@ -702,6 +726,7 @@ class _GameScreenState extends State<GameScreen> {
                       onDone: () => setState(() => _flights.remove(f)),
                     ),
                   if (_toast != null) _toastWidget(g),
+                  if (_starterBanner != null && pv.result == null && s.coverFor == null) _starterBannerWidget(g, _starterBanner!),
                   if (s.status != null) _statusBanner(g, s.status!),
                   if (pv.result != null) Positioned.fill(child: ResultsOverlay(session: s, view: pv, onLeave: _leave)),
                   if (s.coverFor != null) Positioned.fill(child: _cover(s.coverFor!)),
@@ -732,6 +757,35 @@ class _GameScreenState extends State<GameScreen> {
     final cols = math.max(TableGeo.minViewCols, (maxCol + 1 + TableTuning.spareCols).toDouble());
     return (rows: rows, cols: cols);
   }
+
+  Widget _starterBannerWidget(TableGeo g, String text) => Positioned(
+        left: 0,
+        right: 0,
+        top: g.boardRect.top + g.boardRect.height * .3,
+        child: IgnorePointer(
+          child: Center(
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: 1),
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOutBack,
+              builder: (_, t, child) => Opacity(opacity: t.clamp(0, 1), child: Transform.scale(scale: .85 + .15 * t, child: child)),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xEE2A1208),
+                  borderRadius: BorderRadius.circular(30),
+                  border: Border.all(color: MK.goldLight, width: 1.6),
+                  boxShadow: const [
+                    BoxShadow(color: Colors.black54, blurRadius: 12, offset: Offset(0, 4)),
+                    BoxShadow(color: Color(0x66FFD36B), blurRadius: 18),
+                  ],
+                ),
+                child: Text(text, style: MK.title(24).copyWith(color: MK.goldLight)),
+              ),
+            ),
+          ),
+        ),
+      );
 
   List<Widget> _dropHint(TableGeo g) {
     if (_drag == null) return const [];

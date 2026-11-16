@@ -156,6 +156,9 @@ class PlayerView {
   final RoundResult? result;
   final int round;
 
+  /// Who started this round (for the "`Name` starts" banner).
+  final String? starter;
+
   /// Last draw, for the pile-to-rack animation: seq, player and count.
   final int drawSeq;
   final String? drawPlayer;
@@ -177,6 +180,7 @@ class PlayerView {
     required this.rules,
     required this.result,
     required this.round,
+    this.starter,
     required this.drawSeq,
     required this.drawPlayer,
     required this.drawCount,
@@ -202,6 +206,7 @@ class PlayerView {
         'rules': rules.toJson(),
         'result': result?.toJson(),
         'round': round,
+        'starter': starter,
         'drawSeq': drawSeq,
         'drawPlayer': drawPlayer,
         'drawCount': drawCount,
@@ -223,6 +228,7 @@ class PlayerView {
         rules: HouseRules.fromJson((j['rules'] as Map).cast<String, dynamic>()),
         result: j['result'] == null ? null : RoundResult.fromJson((j['result'] as Map).cast<String, dynamic>()),
         round: j['round'] as int,
+        starter: j['starter'] as String?,
         drawSeq: j['drawSeq'] as int,
         drawPlayer: j['drawPlayer'] as String?,
         drawCount: j['drawCount'] as int,
@@ -294,6 +300,9 @@ class GameHost {
   int current = 0;
   int turnSeq = 0;
   int round = 0;
+
+  /// Seat index that starts round 1 (see [pickFirstStarter]); later rounds rotate from it.
+  int? firstStarter;
   int _passesWithEmptyPile = 0;
   RoundResult? result;
   int drawSeq = 0;
@@ -328,8 +337,21 @@ class GameHost {
     if (!_changes.isClosed) _changes.add(null);
   }
 
-  /// Deals a new round. The first player rotates each round.
+  /// Who starts round 1. With a single human (Practice vs bots) that human starts. With two or
+  /// more humans (Pass-and-play, online) a random human starts, so it's not always the host.
+  static int pickFirstStarter(List<PlayerInfo> players, math.Random rng) {
+    final humans = [for (var i = 0; i < players.length; i++) if (players[i].kind == SeatKind.human) i];
+    if (humans.isEmpty) return 0;
+    if (humans.length == 1) return humans.first;
+    return humans[rng.nextInt(humans.length)];
+  }
+
+  /// The player who starts the current round.
+  PlayerInfo get roundStarter => players[((firstStarter ?? 0) + math.max<int>(0, round - 1)) % players.length];
+
+  /// Deals a new round. Round 1 starts with [firstStarter]; each later round starts with the next seat.
   void startRound() {
+    firstStarter ??= pickFirstStarter(players, _rng);
     round++;
     result = null;
     melded.clear();
@@ -355,7 +377,7 @@ class GameHost {
     if (test.enabled && test.pileLimit != null && test.pileLimit! < pile.length) {
       pile = pile.sublist(0, test.pileLimit!);
     }
-    current = (round - 1) % players.length;
+    current = (firstStarter! + round - 1) % players.length;
     _beginTurn();
   }
 
@@ -624,6 +646,7 @@ class GameHost {
       rules: rules,
       result: result,
       round: round,
+      starter: round > 0 ? roundStarter.id : null,
       drawSeq: drawSeq,
       drawPlayer: drawPlayer,
       drawCount: drawCount,

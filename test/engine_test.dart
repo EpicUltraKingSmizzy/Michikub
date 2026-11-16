@@ -82,12 +82,16 @@ void main() {
 
   group('layout', () {
     test('dropping beside a compatible set joins it', () {
-      final bd = boardWith([(0, 2, [r(3), r(4), r(5)])]);
+      final bd = boardWith([
+        (0, 2, [r(3), r(4), r(5)]),
+      ]);
       final out = Layout.place(bd, [r(6)], 0, 5);
       expect(out.blocksInRow(0).single.tiles, [r(3), r(4), r(5), r(6)]);
     });
     test('dropping beside an incompatible set pushes it 1 space aside', () {
-      final bd = boardWith([(0, 5, [r(3), r(4), r(5)])]);
+      final bd = boardWith([
+        (0, 5, [r(3), r(4), r(5)]),
+      ]);
       final out = Layout.place(bd, [b(9)], 0, 4);
       final bl = out.blocksInRow(0);
       expect(bl.length, 2);
@@ -96,24 +100,30 @@ void main() {
       expect(bl[1].start, 6, reason: 'set moved 1 aside to keep a gap');
     });
     test('dropping onto a set inserts into it', () {
-      final bd = boardWith([(1, 0, [r(3), r(5), r(6)])]);
+      final bd = boardWith([
+        (1, 0, [r(3), r(5), r(6)]),
+      ]);
       final out = Layout.place(bd, [r(4)], 1, 1);
       expect(out.blocksInRow(1).single.tiles, [r(3), r(4), r(5), r(6)]);
     });
     test('insertInto at the right edge slides the set left', () {
-      final bd = boardWith([(0, 24, [r(3), r(4), r(5)])]);
+      final bd = boardWith([
+        (0, 24, [r(3), r(4), r(5)]),
+      ]);
       final out = Layout.insertInto(bd, [r(6)], r(3), 3);
       final bl = out.blocksInRow(0).single;
       expect(bl.tiles, [r(3), r(4), r(5), r(6)]);
       expect(bl.end, 27);
     });
     test('split leaves a 1-space gap', () {
-      final bd = boardWith([(0, 0, [r(1), r(2), r(3), r(4), r(5), r(6)])]);
+      final bd = boardWith([
+        (0, 0, [r(1), r(2), r(3), r(4), r(5), r(6)]),
+      ]);
       final out = Layout.split(bd, r(4));
       final bl = out.blocksInRow(0);
       expect(bl.map((x) => x.tiles), [
         [r(1), r(2), r(3)],
-        [r(4), r(5), r(6)]
+        [r(4), r(5), r(6)],
       ]);
       expect(bl[1].start - bl[0].end, 1);
     });
@@ -145,7 +155,7 @@ void main() {
       expect(total <= 27, true);
       expect(row0.any((x) => x.tiles.length == 13), true);
       expect(out.allTiles.toSet(), bd.allTiles.toSet()..addAll(run13));
-      expect(out.isValid, true, reason: '\n$out\n${out.blocks.map((x)=>x.tiles.map(tileLabel).join(" ")).join("\n")}');
+      expect(out.isValid, true, reason: '\n$out\n${out.blocks.map((x) => x.tiles.map(tileLabel).join(" ")).join("\n")}');
     });
     test('never blocked: a full board grows a row', () {
       final bd = Board.empty(1);
@@ -185,41 +195,53 @@ void main() {
     test('first meld needs 30 points from the rack', () {
       final start = Board.empty();
       final rack = [r(10), r(11), r(12), b(1), b(2), b(3)];
-      final low = boardWith([(0, 0, [b(1), b(2), b(3)])]);
+      final low = boardWith([
+        (0, 0, [b(1), b(2), b(3)]),
+      ]);
       expect(checkTurn(start: start, proposed: low, rack: rack, melded: false, rules: rules), contains('30'));
-      final ok = boardWith([(0, 0, [r(10), r(11), r(12)])]);
+      final ok = boardWith([
+        (0, 0, [r(10), r(11), r(12)]),
+      ]);
       expect(checkTurn(start: start, proposed: ok, rack: rack, melded: false, rules: rules), isNull);
       expect(checkTurn(start: start, proposed: low, rack: rack, melded: true, rules: rules), isNull);
-      expect(
-          checkTurn(start: start, proposed: low, rack: rack, melded: false, rules: rules.copyWith(firstMeld: 0)),
-          isNull);
+      expect(checkTurn(start: start, proposed: low, rack: rack, melded: false, rules: rules.copyWith(firstMeld: 0)), isNull);
     });
     test('cannot touch the table before the first meld', () {
-      final start = boardWith([(0, 0, [k(5), k(6), k(7)])]);
+      final start = boardWith([
+        (0, 0, [k(5), k(6), k(7)]),
+      ]);
       final rack = [k(8), r(10), b(10), y(10)];
-      final extended = boardWith([(0, 0, [k(5), k(6), k(7), k(8)]), (1, 0, [r(10), b(10), y(10)])]);
+      final extended = boardWith([
+        (0, 0, [k(5), k(6), k(7), k(8)]),
+        (1, 0, [r(10), b(10), y(10)]),
+      ]);
       expect(checkTurn(start: start, proposed: extended, rack: rack, melded: false, rules: rules), isNotNull);
       expect(checkTurn(start: start, proposed: extended, rack: rack, melded: true, rules: rules), isNull);
     });
     test('table tiles cannot be taken back', () {
-      final start = boardWith([(0, 0, [k(5), k(6), k(7), k(8)])]);
-      final proposed = boardWith([(0, 0, [k(5), k(6), k(7)])]);
+      final start = boardWith([
+        (0, 0, [k(5), k(6), k(7), k(8)]),
+      ]);
+      final proposed = boardWith([
+        (0, 0, [k(5), k(6), k(7)]),
+      ]);
       expect(checkTurn(start: start, proposed: proposed, rack: [r(1)], melded: true, rules: rules), contains('stay'));
     });
     test('invalid sets are refused', () {
-      final proposed = boardWith([(0, 0, [r(1), r(2)])]);
-      expect(checkTurn(start: Board.empty(), proposed: proposed, rack: [r(1), r(2)], melded: true, rules: rules),
-          contains('valid'));
+      final proposed = boardWith([
+        (0, 0, [r(1), r(2)]),
+      ]);
+      expect(checkTurn(start: Board.empty(), proposed: proposed, rack: [r(1), r(2)], melded: true, rules: rules), contains('valid'));
     });
   });
 
   group('host', () {
-    List<PlayerInfo> players() => const [
-          PlayerInfo('a', 'Ann', SeatKind.human),
-          PlayerInfo('b', 'Bob', SeatKind.human),
-        ];
+    List<PlayerInfo> players() => const [PlayerInfo('a', 'Ann', SeatKind.human), PlayerInfo('b', 'Bob', SeatKind.human)];
     test('deals and draws', () {
-      final h = GameHost(players: players(), rules: const HouseRules(turnSeconds: 0), seed: 1)..startRound();
+      final h = GameHost(players: players(), rules: const HouseRules(turnSeconds: 0), seed: 1)
+        ..firstStarter =
+            0 // seat 0 starts, for these tests
+        ..startRound();
       expect(h.racks['a']!.length, 14);
       expect(h.racks['b']!.length, 14);
       expect(h.pile.length, 106 - 28);
@@ -230,7 +252,10 @@ void main() {
       h.dispose();
     });
     test('timeout with invalid board resets and draws', () {
-      final h = GameHost(players: players(), rules: const HouseRules(turnSeconds: 0), seed: 2)..startRound();
+      final h = GameHost(players: players(), rules: const HouseRules(turnSeconds: 0), seed: 2)
+        ..firstStarter =
+            0 // seat 0 starts, for these tests
+        ..startRound();
       final t = h.racks['a']!.first;
       final pv = Layout.place(h.board, [t], 0, 0);
       expect(h.handle('a', PreviewAction(pv)).ok, true);
@@ -241,12 +266,11 @@ void main() {
       h.dispose();
     });
     test('empty pile and everyone passes ends the round', () {
-      final h = GameHost(
-          players: players(),
-          rules: const HouseRules(turnSeconds: 0),
-          test: const TestTools(enabled: true, pileLimit: 0),
-          seed: 3)
-        ..startRound();
+      final h =
+          GameHost(players: players(), rules: const HouseRules(turnSeconds: 0), test: const TestTools(enabled: true, pileLimit: 0), seed: 3)
+            ..firstStarter =
+                0 // seat 0 starts, for these tests
+            ..startRound();
       h.handle('a', const DrawAction());
       expect(h.result, isNull);
       h.handle('b', const DrawAction());
@@ -255,7 +279,10 @@ void main() {
       h.dispose();
     });
     test('scores: losers lose rack value, winner gains the sum', () {
-      final h = GameHost(players: players(), rules: const HouseRules(turnSeconds: 0), seed: 4)..startRound();
+      final h = GameHost(players: players(), rules: const HouseRules(turnSeconds: 0), seed: 4)
+        ..firstStarter =
+            0 // seat 0 starts, for these tests
+        ..startRound();
       final bValue = h.racks['b']!.fold<int>(0, (s, t) => s + tilePenalty(t));
       h.debugWin('a');
       expect(h.result!.roundScores['a'], bValue);
@@ -263,7 +290,10 @@ void main() {
       h.dispose();
     });
     test('view hides other racks', () {
-      final h = GameHost(players: players(), rules: const HouseRules(turnSeconds: 0), seed: 5)..startRound();
+      final h = GameHost(players: players(), rules: const HouseRules(turnSeconds: 0), seed: 5)
+        ..firstStarter =
+            0 // seat 0 starts, for these tests
+        ..startRound();
       final v = h.viewFor('b');
       expect(v.rack, h.racks['b']);
       final json = PlayerView.fromJson(v.toJson());
@@ -313,9 +343,10 @@ void main() {
       }
     });
     test('hard bot extends table sets', () {
-      final bd = boardWith([(0, 0, [k(5), k(6), k(7)])]);
-      final plan = planTurn(
-          board: bd, rack: [k(8), r(1)], melded: true, firstMeld: 30, level: BotLevel.hard, rng: math.Random(1));
+      final bd = boardWith([
+        (0, 0, [k(5), k(6), k(7)]),
+      ]);
+      final plan = planTurn(board: bd, rack: [k(8), r(1)], melded: true, firstMeld: 30, level: BotLevel.hard, rng: math.Random(1));
       expect(plan.tileCount, 1);
       var out = bd;
       out = applyBotStep(out, plan.steps.single);
@@ -337,12 +368,13 @@ void main() {
         while (h.result == null && turns < 2000) {
           final p = h.currentPlayer;
           final plan = planTurn(
-              board: h.board,
-              rack: h.racks[p.id]!,
-              melded: h.melded.contains(p.id),
-              firstMeld: h.rules.firstMeld,
-              level: p.level,
-              rng: rng);
+            board: h.board,
+            rack: h.racks[p.id]!,
+            melded: h.melded.contains(p.id),
+            firstMeld: h.rules.firstMeld,
+            level: p.level,
+            rng: rng,
+          );
           if (plan.draws) {
             h.handle(p.id, const DrawAction());
           } else {

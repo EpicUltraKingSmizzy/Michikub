@@ -257,23 +257,61 @@ class Layout {
     return b;
   }
 
-  /// Drag-and-drop onto a set: [tiles] dropped into the set holding [setTile] at [index].
-  /// If the set would be valid with them there, they go there. If not, but the set is valid
-  /// with them at one end, they go to that end instead (the end nearer [index] if both work):
-  /// a 4 dropped into the middle of 5-6-7-8 makes 4-5-6-7-8, and 1-2-3-4 dropped onto
-  /// 5-6-7-8 makes 1-2-3-4-5-6-7-8. With no valid placement they go where they were dropped.
+  /// Drag-and-drop onto a set: [tiles] dropped into the set holding [setTile] at [index]
+  /// (the drop landed on column [col] of that set's row).
+  ///  * If the set is valid with them there, they go there.
+  ///  * If not, but it is valid with them at one end, they go to that end (the end nearer
+  ///    [index] if both work): a 4 dropped into the middle of 5-6-7-8 makes 4-5-6-7-8, and
+  ///    1-2-3-4 dropped onto 5-6-7-8 makes 1-2-3-4-5-6-7-8.
+  ///  * A set that isn't valid yet (still being built) also takes tiles that keep it
+  ///    compatible, where dropped or else at an end, so sets can be built by dropping.
+  ///  * Otherwise the tiles don't belong in that set: they stay where they were dropped as
+  ///    their own set and the set is shunted aside ([shuntAside]). A blue 4 dropped onto a
+  ///    yellow 5-6-7-8 stays put and the yellow run moves over. Runs and groups alike.
   /// The set slides away from the board edge if it needs room ([insertInto]).
-  static Board dropInto(Board board, List<int> tiles, int setTile, int index) {
+  static Board dropInto(Board board, List<int> tiles, int setTile, int index, {int? col}) {
     final b = board.copy()..removeTiles(tiles);
     final blk = b.blockOf(setTile);
     if (blk == null) return b;
     index = index.clamp(0, blk.length);
-    final there = [...blk.tiles.sublist(0, index), ...tiles, ...blk.tiles.sublist(index)];
-    if (!isValidMeld(there)) {
-      final end = attachEnd(blk.tiles, tiles, index);
-      if (end != null) return insertInto(b, tiles, setTile, end);
+    List<int> at(int i) => [...blk.tiles.sublist(0, i), ...tiles, ...blk.tiles.sublist(i)];
+    if (isValidMeld(at(index))) return insertInto(b, tiles, setTile, index);
+    final end = attachEnd(blk.tiles, tiles, index);
+    if (end != null) return insertInto(b, tiles, setTile, end);
+    if (!isValidMeld(blk.tiles)) {
+      if (isCompatible(at(index))) return insertInto(b, tiles, setTile, index);
+      final front = isCompatible(at(0)), back = isCompatible(at(blk.length));
+      if (front || back) {
+        final i = front && back ? (index < blk.length / 2 ? 0 : blk.length) : (front ? 0 : blk.length);
+        return insertInto(b, tiles, setTile, i);
+      }
     }
-    return insertInto(b, tiles, setTile, index);
+    if (col == null) return insertInto(b, tiles, setTile, index);
+    return shuntAside(b, tiles, setTile, col);
+  }
+
+  /// [tiles] are set down as their own set at column [col] of the row holding [setTile], and
+  /// that set moves aside: away from the drop point (left if the drop was on its right half,
+  /// else right), or the other way if that side has no room. Neighbours are pushed with
+  /// 1-space gaps by the usual row rules; a set only goes to another row if the row is full.
+  static Board shuntAside(Board board, List<int> tiles, int setTile, int col) {
+    final base = board.copy()..removeTiles(tiles);
+    final blk = base.blockOf(setTile);
+    if (blk == null) return place(base, tiles, 0, col, merge: false);
+    final row = blk.row;
+    col = col.clamp(0, Board.width - tiles.length);
+    final leftFirst = col - blk.start >= blk.length / 2;
+    Board? fallback;
+    for (final left in [leftFirst, !leftFirst]) {
+      final b = base.copy();
+      final others = b.blocksInRow(row)..removeWhere((x) => x.start == blk.start);
+      others.add(blk.at(row, left ? col - blk.length - 1 : col + tiles.length + 1));
+      _resolveRow(b, row, others, Block(row, col, tiles));
+      final p = b.find(tiles.first);
+      if (p != null && p.row == row && p.col == col) return b;
+      fallback ??= b;
+    }
+    return fallback!;
   }
 
   /// End-of-turn tidying, run by the host after every played turn, so every device gets the

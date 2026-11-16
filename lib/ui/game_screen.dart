@@ -451,7 +451,7 @@ class _GameScreenState extends State<GameScreen> {
     if (row < tmp.rowCount && tmp.rows[row][col] >= 0) {
       final blk = tmp.blockOf(tmp.rows[row][col])!;
       final idx = (col - blk.start) + (frac > .5 ? 1 : 0);
-      return Layout.dropInto(tmp, tiles, blk.tiles.first, idx);
+      return Layout.dropInto(tmp, tiles, blk.tiles.first, idx, col: col);
     }
     return Layout.place(tmp, tiles, row, col);
   }

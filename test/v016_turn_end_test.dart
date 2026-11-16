@@ -127,6 +127,68 @@ void main() {
     });
   });
 
+  group('2b. tiles that don\'t fit shunt the set aside', () {
+    Block rowSet(Board bd, int t) => bd.blockOf(t)!;
+
+    test('blue 4 onto yellow 5-6-7-8: the 4 stays where dropped, the run moves over (user example)', () {
+      final bd = boardOf([Block(0, 10, [y(5), y(6), y(7), y(8)])]);
+      // Dropped on the 7 (right half): the run moves left.
+      final out = Layout.dropInto(bd, [b(4)], y(5), 2, col: 12);
+      expect(out.find(b(4)), (row: 0, col: 12));
+      expect(rowSet(out, b(4)).tiles, [b(4)]);
+      final run = rowSet(out, y(5));
+      expect(run.tiles, [y(5), y(6), y(7), y(8)]);
+      expect(run.row, 0);
+      expect(run.end, 11, reason: 'left of the 4 with a 1-space gap');
+      // Dropped on the 5 (left half): the run moves right.
+      final out2 = Layout.dropInto(bd, [b(4)], y(5), 0, col: 10);
+      expect(out2.find(b(4)), (row: 0, col: 10));
+      expect(rowSet(out2, y(5)).start, 12);
+    });
+
+    test('no room on the preferred side: the set goes the other way', () {
+      final bd = boardOf([Block(0, 0, [y(5), y(6), y(7), y(8)])]);
+      final out = Layout.dropInto(bd, [b(4)], y(5), 3, col: 3); // right half, but no room left
+      expect(out.find(b(4)), (row: 0, col: 3));
+      expect(rowSet(out, y(5)).start, 5);
+    });
+
+    test('neighbours are pushed with 1-space gaps', () {
+      final bd = boardOf([Block(0, 10, [y(5), y(6), y(7), y(8)]), Block(0, 5, [r(1), r(2), r(3)])]);
+      final out = Layout.dropInto(bd, [b(4)], y(5), 2, col: 12);
+      expect(out.find(b(4)), (row: 0, col: 12));
+      final runs = out.blocksInRow(0).map((x) => '${x.start}-${x.end - 1}').toList();
+      expect(runs, ['3-5', '7-10', '12-12']);
+    });
+
+    test('several tiles that don\'t fit stay together where dropped', () {
+      final bd = boardOf([Block(0, 10, [y(5), y(6), y(7), y(8)])]);
+      final out = Layout.dropInto(bd, [r(1), r(2), r(3)], y(5), 1, col: 11);
+      expect(rowSet(out, r(1)).tiles, [r(1), r(2), r(3)]);
+      expect(out.find(r(1)), (row: 0, col: 11));
+      expect(rowSet(out, y(5)).start, 15);
+    });
+
+    test('groups are shunted too', () {
+      final bd = boardOf([Block(0, 10, [r(7), b(7), y(7)])]);
+      final out = Layout.dropInto(bd, [b(3)], r(7), 1, col: 11);
+      expect(rowSet(out, b(3)).tiles, [b(3)]);
+      expect(rowSet(out, r(7)).tiles, [r(7), b(7), y(7)]);
+    });
+
+    test('a set still being built takes compatible tiles (no shunt)', () {
+      final bd = boardOf([Block(0, 10, [y(5)])]);
+      expect(rowSet(Layout.dropInto(bd, [y(6)], y(5), 0, col: 10), y(5)).tiles, [y(6), y(5)].reversed.toList());
+      final pair = boardOf([Block(0, 10, [r(9), b(9)])]);
+      expect(rowSet(Layout.dropInto(pair, [k(9)], r(9), 1, col: 11), r(9)).tiles.toSet(), {r(9), b(9), k(9)});
+    });
+
+    test('a valid fit still wins over shunting (joker, ends)', () {
+      final bd = boardOf([Block(0, 10, [y(5), y(6), y(7), y(8)])]);
+      expect(rowSet(Layout.dropInto(bd, [y(9)], y(5), 1, col: 11), y(5)).tiles, [y(5), y(6), y(7), y(8), y(9)]);
+    });
+  });
+
   group('3. end-of-turn compacting', () {
     test('sets move toward the middle with 1-space gaps, in the same order', () {
       final bd = boardOf([

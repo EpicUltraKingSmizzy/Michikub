@@ -72,6 +72,18 @@ void main() {
     await tearDownTable(tester);
   });
 
+  testWidgets('dragging a blue 4 onto a yellow 5-6-7-8 leaves the 4 there and shunts the run', (tester) async {
+    final start = Board.empty()..writeBlock(Block(0, 9, [y(5), y(6), y(7), y(8)]));
+    await setUpTable(tester, start, [b(4), r(1), r(13)]);
+    final seven = rectOf(tester, y(7));
+    await dragTo(tester, b(4), seven.center);
+    expect(table().find(b(4)), (row: 0, col: 11));
+    expect(table().blockOf(b(4))!.tiles, [b(4)]);
+    expect(table().blockOf(y(5))!.tiles, [y(5), y(6), y(7), y(8)]);
+    expect(table().blockOf(y(5))!.end, 10);
+    await tearDownTable(tester);
+  });
+
   testWidgets('the zoom holds still during a drag and zooms in when the bottom row empties', (tester) async {
     final start = Board.empty()
       ..writeBlock(Block(0, 9, [r(1), r(2), r(3)]))

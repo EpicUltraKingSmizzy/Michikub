@@ -20,15 +20,15 @@ class HomeScreen extends StatelessWidget {
               child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                 Column(mainAxisSize: MainAxisSize.min, children: [
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(22),
+                    borderRadius: BorderRadius.circular(32),
                     child: Container(
-                      decoration: BoxDecoration(border: Border.all(color: MK.gold, width: 2), borderRadius: BorderRadius.circular(22)),
-                      child: Image.asset('assets/icon/michikub_icon_1024.png', width: 110, height: 110),
+                      decoration: BoxDecoration(border: Border.all(color: MK.gold, width: 3), borderRadius: BorderRadius.circular(32)),
+                      child: Image.asset('assets/icon/michikub_icon_1024.png', width: 170, height: 170),
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  Text('Michikub', style: MK.title(40).copyWith(color: MK.goldLight, shadows: const [Shadow(color: Colors.black, blurRadius: 8)])),
-                  Text('Tiles with friends. No ads, no servers.', style: MK.body(13, color: MK.gold)),
+                  const SizedBox(height: 8),
+                  Text('Michikub', style: MK.title(50).copyWith(color: MK.goldLight, shadows: const [Shadow(color: Colors.black, blurRadius: 8)])),
+                  Text('Play with friends. No ads, no subscription.', style: MK.body(14, color: MK.gold)),
                 ]),
                 const SizedBox(width: 40),
                 SizedBox(

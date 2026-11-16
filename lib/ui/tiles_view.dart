@@ -71,23 +71,40 @@ class TileFace extends StatelessWidget {
     );
   }
 
+  /// Number size as a share of tile width. One size for every number, so 1-digit and 2-digit tiles match.
+  static const numberScale = 0.58;
+
   Widget _number(Color c) {
     final n = tileNumber(tile);
-    final fs = (n >= 10 ? width * 0.5 : width * 0.58);
+    final fs = width * numberScale;
+    final twoDigits = n >= 10;
     return Column(
       mainAxisAlignment: MainAxisAlignment.start,
       children: [
-        SizedBox(height: height * (n >= 10 ? .12 : .08)),
-        Text(
-          '$n',
-          maxLines: 1,
-          style: TextStyle(
-            fontFamily: 'Rubik',
-            fontWeight: FontWeight.w800,
-            fontSize: fs,
-            height: 1.0,
-            letterSpacing: -fs * .04,
-            color: c,
+        SizedBox(height: height * .08),
+        // A fixed-height line box and identical text metrics keep every number on the same baseline.
+        SizedBox(
+          height: fs,
+          width: width,
+          child: OverflowBox(
+            maxWidth: width * 1.2,
+            alignment: Alignment.topCenter,
+            child: Text(
+              '$n',
+              maxLines: 1,
+              softWrap: false,
+              textAlign: TextAlign.center,
+              textHeightBehavior: const TextHeightBehavior(applyHeightToFirstAscent: true, applyHeightToLastDescent: true),
+              style: TextStyle(
+                fontFamily: 'Rubik',
+                fontWeight: FontWeight.w800,
+                fontSize: fs,
+                height: 1.0,
+                // Two digits sit closer together so 10-13 fit the same tile at the same size.
+                letterSpacing: twoDigits ? -fs * .1 : 0,
+                color: c,
+              ),
+            ),
           ),
         ),
         const Spacer(),

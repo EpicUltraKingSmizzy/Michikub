@@ -26,6 +26,10 @@ class BotTuning {
   /// it out one action at a time. Each action is shown, then followed by
   /// its pause before the next action (or the end of the turn).
   ///
+  /// At the start of every bot turn the bot does nothing for this long, before any move or draw,
+  /// so players see the turn pass to it. It counts against the bot's turn timer like any other time.
+  static const int turnStartMs = 1000;
+
   /// A single tile moved: a rack tile extending a table set, or a tile
   /// moved on the table.
   static const int singleTileMs = 500;
@@ -342,6 +346,10 @@ class BotDriver {
           level: p.level,
           rng: rng,
         );
+    // Take no action for a moment at the start of the turn (counts against the turn clock).
+    await _wait(BotTuning.turnStartMs);
+    await _waitWhilePaused(seq);
+    if (_stale(seq)) return;
     if (plan.draws) {
       host.handle(p.id, const DrawAction());
       return;

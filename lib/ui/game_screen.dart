@@ -10,9 +10,10 @@ import '../app/session.dart';
 import '../engine/board.dart';
 import '../engine/host.dart';
 import '../engine/meld.dart';
+import '../engine/rack_sort.dart';
 import '../engine/tiles.dart';
-import 'results.dart';
 import 'avatar.dart';
+import 'results.dart';
 import 'table_geo.dart';
 import 'theme.dart';
 import 'tiles_view.dart';
@@ -24,6 +25,9 @@ class TableTuning {
   static const flashMs = 650;
   static const shineMs = 750;
   static const toastMs = 2600;
+
+  /// Empty columns kept in view right of the widest set (see _boardView).
+  static const spareCols = 3;
 }
 
 enum _Src { pile, seat }
@@ -66,6 +70,9 @@ class _GameScreenState extends State<GameScreen> {
   Board working = Board.empty();
   final List<Board> _history = [];
   final Map<String, List<int>> _rackOrders = {};
+
+  /// My rack order (with gaps) when my turn started, for Reset.
+  List<int> _turnStartOrder = const [];
   final Set<int> _selected = {};
   final Set<int> _flash = {};
   final Set<int> _shine = {};
@@ -113,7 +120,8 @@ class _GameScreenState extends State<GameScreen> {
       if (old != null) ...(old.myTurn ? working.allTiles : old.board.allTiles),
       if (old != null) ...old.rack,
     };
-    if (seatChanged || nv.turnSeq != _turnSeq) {
+    final turnChanged = seatChanged || nv.turnSeq != _turnSeq;
+    if (turnChanged) {
       _turnSeq = nv.turnSeq;
       working = nv.board.copy();
       _history.clear();
@@ -121,9 +129,12 @@ class _GameScreenState extends State<GameScreen> {
       _drag = null;
     }
     final order = _rackOrders.putIfAbsent(nv.me, () => []);
-    order.removeWhere((t) => !nv.rack.contains(t));
+    order.removeWhere((t) => !isRackGap(t) && !nv.rack.contains(t));
     final fresh = nv.rack.where((t) => !order.contains(t)).toList();
     order.addAll(fresh);
+    if (nv.myTurn && turnChanged) {
+      _turnStartOrder = List.of(order);
+    }
 
     if (!seatChanged) {
       if (nv.drawSeq != _drawSeq && nv.drawPlayer != null) {
@@ -182,9 +193,10 @@ class _GameScreenState extends State<GameScreen> {
   Board get _shown => _myTurn ? working : (v?.board ?? working);
   Set<int> get _startTiles => v!.turnStartBoard.allTiles.toSet();
   bool get _melded => v!.mySeat.melded || v!.rules.firstMeld == 0;
+  /// Rack entries as shown: tiles not on the table this turn, plus the gaps between sorted sets.
   List<int> get _rackShown {
     final onBoard = _myTurn ? working.allTiles.toSet() : <int>{};
-    return _order.where((t) => !onBoard.contains(t)).toList();
+    return tidyRackGaps(_order.where((t) => !onBoard.contains(t)).toList());
   }
 
   bool _onBoard(int t) => _shown.find(t) != null;
@@ -315,7 +327,7 @@ class _GameScreenState extends State<GameScreen> {
       }
       // Reorder the rack (and return this turn's tiles from the table).
       final shown = _rackShown;
-      var idx = g.rackIndexAt(d.pointer - Offset(g.rackTileW * (d.grab.dx - .5), 0), shown.length);
+      var idx = g.rackIndexAt(d.pointer - Offset(g.rackTileW * (d.grab.dx - .5), 0));
       final before = shown.take(idx).where((t) => !tiles.contains(t)).length;
       final rest = _order.where((t) => !tiles.contains(t)).toList();
       final shownRest = shown.where((t) => !tiles.contains(t)).toList();
@@ -461,10 +473,10 @@ class _GameScreenState extends State<GameScreen> {
     final shown = _rackShown;
     final i = shown.indexOf(t);
     var a = i, b = i;
-    while (a > 0 && isCompatible(shown.sublist(a - 1, b + 1))) {
+    while (a > 0 && !isRackGap(shown[a - 1]) && isCompatible(shown.sublist(a - 1, b + 1))) {
       a--;
     }
-    while (b < shown.length - 1 && isCompatible(shown.sublist(a, b + 2))) {
+    while (b < shown.length - 1 && !isRackGap(shown[b + 1]) && isCompatible(shown.sublist(a, b + 2))) {
       b++;
     }
     if (b > a) {
@@ -499,26 +511,42 @@ class _GameScreenState extends State<GameScreen> {
     if (!r.ok && mounted) _showToast(r.error ?? 'The host refused that move.');
   }
 
-  void _undo() {
-    if (_history.isEmpty) return;
-    working = _history.removeLast();
+  /// Anything to reset: tiles moved on the table or the rack rearranged since the turn began.
+  bool get _canReset {
+    if (!_myTurn || v == null) return false;
+    if (_history.isNotEmpty) return true;
+    final start = _turnStartOrder;
+    final now = _order;
+    if (start.length != now.length) return true;
+    for (var i = 0; i < start.length; i++) {
+      if (start[i] != now[i]) return true;
+    }
+    return false;
+  }
+
+  /// Reset: every tile goes back to where it was when the turn began, on the table and in the
+  /// rack. The turn timer keeps running (it is not restarted).
+  void _resetTurn() {
+    if (!_myTurn || v == null) return;
+    working = v!.turnStartBoard.copy();
+    _history.clear();
+    _selected.clear();
+    final rack = v!.rack.toSet();
+    final restored = _turnStartOrder.where((t) => isRackGap(t) || rack.contains(t)).toList();
+    final extra = v!.rack.where((t) => !restored.contains(t));
+    _order
+      ..clear()
+      ..addAll(restored)
+      ..addAll(extra);
     s.act(PreviewAction(working));
     _haptic();
     setState(() {});
   }
 
-  void _resetTurn() {
-    if (!_myTurn || v == null) return;
-    _history.add(working);
-    working = v!.turnStartBoard.copy();
-    s.act(PreviewAction(working));
-    setState(() {});
-  }
-
+  /// 789 / 777: valid sets of 3+ to the top left (each followed by a small gap), then the rest sorted.
   void _sort(bool runs) {
-    final key = runs ? runSortKey : groupSortKey;
     final onBoard = _myTurn ? working.allTiles.toSet() : <int>{};
-    final rack = _order.where((t) => !onBoard.contains(t)).toList()..sort((a, b) => key(a) - key(b));
+    final rack = sortRackWithSets(_order.where((t) => !isRackGap(t) && !onBoard.contains(t)).toList(), runs: runs);
     final rest = _order.where(onBoard.contains).toList();
     _order
       ..clear()
@@ -557,13 +585,6 @@ class _GameScreenState extends State<GameScreen> {
                 Text(v?.rules.summary() ?? '', style: MK.body(12, color: MK.gold), textAlign: TextAlign.center),
                 const SizedBox(height: 12),
                 GoldButton('Resume', icon: Icons.play_arrow, onPressed: () => Navigator.pop(ctx)),
-                const SizedBox(height: 8),
-                GoldButton('Reset this turn', icon: Icons.restart_alt, crimson: true, onPressed: _myTurn
-                    ? () {
-                        Navigator.pop(ctx);
-                        _resetTurn();
-                      }
-                    : null),
                 if (s.testMenu && host != null && me != null) ...[
                   const SizedBox(height: 14),
                   Text('Test tools', style: MK.body(14, color: MK.goldLight, weight: FontWeight.w700), textAlign: TextAlign.center),
@@ -648,8 +669,13 @@ class _GameScreenState extends State<GameScreen> {
           child: SafeArea(
             child: LayoutBuilder(builder: (ctx, cons) {
               final rack = _rackShown;
-              final rackCount = rack.length + (_drag?.tiles.where((t) => !_onBoard(t)).length ?? 0) * 0;
-              final g = TableGeo(cons.biggest, boardRows: _shown.rowCount, rackCount: math.max(rackCount, 1), seatCount: pv.seats.length);
+              final view = _boardView(_shown);
+              final g = TableGeo(cons.biggest,
+                  boardRows: _shown.rowCount,
+                  rackEntries: rack,
+                  seatCount: pv.seats.length,
+                  viewRows: view.rows,
+                  viewCols: view.cols);
               _geo = g;
               return Stack(
                 key: _stackKey,
@@ -686,6 +712,25 @@ class _GameScreenState extends State<GameScreen> {
         ),
       ),
     );
+  }
+
+  /// How much of the board to show: 3 rows and a narrow width to start, growing (rows and
+  /// columns independently) as sets spread down or across, so tiles start large. One empty
+  /// row below the lowest set and a few empty columns to the right stay in view for new sets.
+  ({double rows, double cols}) _boardView(Board b) {
+    final used = b.usedRows;
+    var maxCol = -1;
+    for (final r in used) {
+      for (var c = Board.width - 1; c > maxCol; c--) {
+        if (b.rows[r][c] >= 0) {
+          maxCol = c;
+          break;
+        }
+      }
+    }
+    final rows = math.max(TableGeo.minViewRows, (used.isEmpty ? 0 : used.last + 2).toDouble());
+    final cols = math.max(TableGeo.minViewCols, (maxCol + 1 + TableTuning.spareCols).toDouble());
+    return (rows: rows, cols: cols);
   }
 
   List<Widget> _dropHint(TableGeo g) {
@@ -731,8 +776,12 @@ class _GameScreenState extends State<GameScreen> {
             decoration: BoxDecoration(
               borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
               image: const DecorationImage(image: AssetImage('assets/textures/rackwood.jpg'), fit: BoxFit.cover),
-              border: Border.all(color: MK.gold.withValues(alpha: .7)),
-              boxShadow: const [BoxShadow(color: Colors.black87, blurRadius: 24, offset: Offset(0, -6))],
+              border: Border.all(color: _myTurn ? MK.goldLight : MK.gold.withValues(alpha: .7), width: _myTurn ? 1.6 : 1),
+              boxShadow: [
+                const BoxShadow(color: Colors.black87, blurRadius: 24, offset: Offset(0, -6)),
+                // On my turn the rack glows gold, like my avatar (painted over the dark shadow).
+                if (_myTurn) const BoxShadow(color: Color(0xCCFFD36B), blurRadius: 22, spreadRadius: 3),
+              ],
             ),
             padding: EdgeInsets.fromLTRB(6, g.rackPadTop + 2, 6, 0),
             child: Column(
@@ -761,13 +810,33 @@ class _GameScreenState extends State<GameScreen> {
           ),
         ),
       ),
-      // Make space button, left of the rack.
-      Positioned.fromRect(
-        rect: Rect.fromLTWH(g.rackRect.left - 58, g.rackRect.top + 2, 46, 46),
-        child: Tooltip(
-          message: 'Make space',
-          child: RingButton(icon: Icons.unfold_more_double, size: 46, onPressed: _myTurn ? _makeSpace : null),
-        ),
+      // Left of the rack, top down: Add row (Make space), then the 789 and 777 sort buttons.
+      Positioned(
+        left: g.rackRect.left - 58,
+        top: math.min(g.rackRect.top + 2, g.size.height - 3 * 46 - 2 * 6 - 6),
+        width: 46,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Tooltip(
+            message: 'Add a row (make space)',
+            child: RingButton(
+              size: 46,
+              onPressed: _myTurn ? _makeSpace : null,
+              child: Text('ADD\nROW',
+                  textAlign: TextAlign.center,
+                  style: MK.body(12.5, color: MK.goldLight, weight: FontWeight.w800).copyWith(height: 1.0)),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Tooltip(
+            message: 'Sort: sets first, then runs order',
+            child: RingButton(size: 46, onPressed: () => _sort(true), child: _sortLabel('789')),
+          ),
+          const SizedBox(height: 6),
+          Tooltip(
+            message: 'Sort: sets first, then groups order',
+            child: RingButton(size: 46, onPressed: () => _sort(false), child: _sortLabel('777')),
+          ),
+        ]),
       ),
     ];
   }
@@ -870,8 +939,6 @@ class _GameScreenState extends State<GameScreen> {
         left: 8,
         top: 6,
         child: Row(children: [
-          Text('Michikub', style: MK.title(16).copyWith(color: MK.goldLight)),
-          const SizedBox(width: 8),
           Text('Round ${v!.round}', style: MK.body(11, color: MK.gold)),
         ]),
       );
@@ -941,23 +1008,14 @@ class _GameScreenState extends State<GameScreen> {
         bottom: 10,
         width: g.ctrlW - 16,
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            RingButton(
-                size: bs,
-                caption: 'RUNS',
-                onPressed: () => _sort(true),
-                child: _miniTiles([makeTile(TileColor.red, 7), makeTile(TileColor.red, 8), makeTile(TileColor.red, 9)], bs)),
-            RingButton(
-                size: bs,
-                caption: 'GROUPS',
-                onPressed: () => _sort(false),
-                child: _miniTiles([makeTile(TileColor.red, 7), makeTile(TileColor.blue, 7), makeTile(TileColor.yellow, 7)], bs)),
-            RingButton(size: bs, icon: Icons.undo, caption: 'UNDO', onPressed: my && _history.isNotEmpty ? _undo : null),
+          Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+            RingButton(size: bs, icon: Icons.restart_alt, caption: 'RESET', onPressed: _canReset ? _resetTurn : null),
+            const SizedBox(width: 10),
             RingButton(size: bs, icon: Icons.menu, caption: 'MENU', onPressed: _openMenu),
           ]),
           const SizedBox(height: 8),
           GoldButton(
-            my ? (played ? 'End turn' : (pv.pile > 0 ? 'Draw' : 'Pass')) : 'Draw / End turn',
+            my ? (played ? 'End turn' : (pv.pile > 0 ? 'Draw' : 'Pass')) : 'Waiting...',
             icon: my ? (played ? Icons.check_circle_outline : Icons.add_box_outlined) : Icons.hourglass_empty,
             compact: true,
             onPressed: my ? _drawOrEnd : null,
@@ -967,11 +1025,8 @@ class _GameScreenState extends State<GameScreen> {
     ];
   }
 
-  Widget _miniTiles(List<int> ts, double bs) => Row(mainAxisSize: MainAxisSize.min, children: [
-        for (final t in ts)
-          Text('${tileNumber(t)}',
-              style: TextStyle(fontFamily: 'Rubik', fontWeight: FontWeight.w800, fontSize: bs * .26, color: colorOf(tileColor(t)), height: 1)),
-      ]);
+  Widget _sortLabel(String text) =>
+      Text(text, style: MK.body(15, color: MK.goldLight, weight: FontWeight.w800).copyWith(height: 1.0));
 
   List<Widget> _sprites(TableGeo g, PlayerView pv, List<int> rack) {
     final out = <Widget>[];
@@ -1008,6 +1063,7 @@ class _GameScreenState extends State<GameScreen> {
     }
     for (var i = 0; i < rack.length; i++) {
       final t = rack[i];
+      if (isRackGap(t)) continue;
       if (dragging.contains(t)) continue;
       out.add(_sprite(t, g.rackSlot(i), spawnRect(t), glow(t), board: false));
     }

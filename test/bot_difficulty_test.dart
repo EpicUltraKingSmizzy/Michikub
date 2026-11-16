@@ -63,7 +63,6 @@ void main() {
         const BotStep.moveSet(1, toSetTile: 20): BotTuning.splitOrSetMoveMs, // a table set attached / relocated
         const BotStep.split(2): BotTuning.splitOrSetMoveMs, // a split
         const BotStep.removeTile(2): BotTuning.singleTileMs, // a tile removed from a set
-        const BotStep.swapJoker(4, 104): BotTuning.singleTileMs, // a rack tile swapped in for a table joker
       };
       expect(steps.keys.map((s) => s.type).toSet(), BotStepType.values.toSet(), reason: 'all move types covered');
       for (final e in steps.entries) {

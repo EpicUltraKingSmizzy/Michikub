@@ -90,45 +90,109 @@ void main() {
     });
   });
 
-  group('bots', () {
-    test('bots find a joker reclaim (2 moves) and play the joker again', () {
-      final plays = findPlays(start, [r(5), b(1), b(2)]);
-      final reclaim = plays.where((p) => p.reclaimedJokers.contains(j)).toList();
-      expect(reclaim, isNotEmpty);
-      for (final p in reclaim) {
-        expect(p.moveCount, 2);
-        final end = applyBotPlay(start, p);
-        expect(end.isValid, true);
-        expect(end.allTiles.toSet().containsAll(start.allTiles), true);
-      }
-      // r5 + (b1 b2 joker): 3 rack tiles; the joker doesn't count as a rack tile.
-      final best = reclaim.reduce((a, c) => a.tileCount >= c.tileCount ? a : c);
-      expect(best.tileCount, 3);
-    });
-    test('a Hard bot uses it, and every play ends with every table tile on the table', () {
-      final p = planTurn(
-        board: start,
-        rack: [r(5), b(1), b(2), k(13)],
-        melded: true,
-        firstMeld: 30,
-        level: BotLevel.hard,
-        rng: math.Random(1),
-      );
-      expect(p.plays.any((x) => x.reclaimedJokers.isNotEmpty), true);
-      var bd = start;
-      for (final play in p.plays) {
-        expect(playStaysValid(bd, play) || play.reclaimedJokers.isNotEmpty, true);
-        bd = applyBotPlay(bd, play);
+  group('bots (honest moves; the joker never leaves the table)', () {
+    /// The best reclaim play the bot finds, checked: ends valid, every table tile still on the
+    /// table, the joker in a valid set, and only rack tiles (never the joker) counted.
+    BotPlay bestReclaim(Board board, List<int> rack, int joker) {
+      final plays = findPlays(board, rack).where((p) => p.reclaimedJokers.contains(joker)).toList();
+      expect(plays, isNotEmpty, reason: 'a reclaim is found');
+      for (final p in plays) {
+        var bd = board;
+        for (final st in p.steps) {
+          bd = applyBotStep(bd, st);
+          expect(bd.find(joker), isNotNull, reason: 'the joker stays on the table at every move');
+        }
         expect(bd.isValid, true);
-        expect(bd.allTiles.toSet().containsAll(start.allTiles), true);
+        expect(bd.allTiles.toSet().containsAll(board.allTiles), true);
+        expect(p.rackTiles.any(isJoker), false);
+      }
+      plays.sort((x, y) => x.tileCount != y.tileCount ? y.tileCount - x.tileCount : x.moveCount - y.moveCount);
+      return plays.first;
+    }
+
+    test('(a) group 6-6-J + the missing-colour 6 and 10-11 in the rack: 6 added, J-10-11 played (3 moves)', () {
+      final bd = boardWith([
+        (0, 0, [r(6), b(6), j]),
+      ]);
+      final p = bestReclaim(bd, [y(6), k(10), k(11)], j);
+      expect(p.moveCount, 3);
+      expect(p.tileCount, 3);
+      expect(p.steps.map((s) => s.type).toList(), [BotStepType.newSet, BotStepType.moveTile, BotStepType.extend]);
+      final end = applyBotPlay(bd, p);
+      final sets = end.sets.map((s) => s.toSet()).toList();
+      expect(sets.any((s) => s.length == 3 && s.containsAll([r(6), b(6), y(6)])), true);
+      expect(sets.any((s) => s.containsAll([k(10), k(11), j]) && s.length == 3), true);
+    });
+
+    test('(b) run 7-8-J-10 + the matching 9: J taken out, 9 put in its place, J completes a rack set (3 moves)', () {
+      final bd = boardWith([
+        (0, 0, [r(7), r(8), j, r(10)]),
+      ]);
+      final p = bestReclaim(bd, [r(9), b(3), b(4), k(13)], j);
+      expect(p.moveCount, 3);
+      expect(p.tileCount, 3);
+      final end = applyBotPlay(bd, p);
+      expect(end.blockOf(r(7))!.tiles, [r(7), r(8), r(9), r(10)], reason: 'the run is rejoined in place');
+      expect(end.blockOf(j)!.tiles.toSet(), {b(3), b(4), j});
+    });
+
+    test('(b) with a spare table set the joker can join instead: 2 moves', () {
+      final bd = boardWith([
+        (0, 0, [r(7), r(8), j, r(10)]),
+        (2, 0, [k(1), k(2), k(3)]),
+      ]);
+      final p = bestReclaim(bd, [r(9)], j);
+      expect(p.moveCount, 2);
+      final end = applyBotPlay(bd, p);
+      expect(end.blockOf(r(7))!.tiles, [r(7), r(8), r(9), r(10)]);
+      expect(end.blockOf(j)!.tiles, [k(1), k(2), k(3), j]);
+    });
+
+    test('(c) a joker at either end of a run works the same way', () {
+      for (final (tiles, t) in [
+        ([r(7), r(8), r(9), j], r(10)),
+        ([j, r(8), r(9), r(10)], r(7)),
+      ]) {
+        final bd = boardWith([
+          (0, 2, tiles),
+        ]);
+        final p = bestReclaim(bd, [t, b(3), b(4)], j);
+        expect(p.moveCount, 3);
+        final end = applyBotPlay(bd, p);
+        expect(end.blockOf(r(8))!.tiles, [r(7), r(8), r(9), r(10)]);
       }
     });
-    test('the safe-zone check treats a joker in hand as not committable', () {
-      const play = BotPlay([]);
-      expect(playStaysValid(start, play), true);
-      final reclaim = findPlays(start, [r(5), b(1), b(2)]).firstWhere((p) => p.reclaimedJokers.isNotEmpty);
-      expect(playStaysValid(start, reclaim), false);
+
+    test('planned turns use it within every move cap, never leaving the joker in a rack', () {
+      final bd = boardWith([
+        (0, 0, [r(6), b(6), j]),
+        (1, 0, [r(7, 1), r(8, 1), j + 1, r(10, 1)]),
+      ]);
+      final rack = [y(6), k(10), k(11), r(9, 1), b(3), b(4)];
+      for (final level in BotLevel.values) {
+        for (var seed = 0; seed < 30; seed++) {
+          final p = planTurn(board: bd, rack: rack, melded: true, firstMeld: 30, level: level, rng: math.Random(seed));
+          final cap = BotTuning.moveCap[level];
+          if (cap != null) expect(p.moveCount, lessThanOrEqualTo(cap));
+          var b2 = bd;
+          for (final play in p.plays) {
+            b2 = applyBotPlay(b2, play);
+            expect(b2.isValid, true);
+            expect(b2.allTiles.toSet().containsAll(bd.allTiles), true);
+          }
+          if (level == BotLevel.hard) expect(p.plays.where((x) => x.reclaimedJokers.isNotEmpty).length, 2);
+        }
+      }
     });
+
+    test('the safe-zone check: a reclaim passes through an invalid table, so it is not started late', () {
+      final bd = boardWith([
+        (0, 0, [r(7), r(8), j, r(10)]),
+      ]);
+      final p = findPlays(bd, [r(9), b(3), b(4)]).firstWhere((p) => p.reclaimedJokers.isNotEmpty);
+      expect(playStaysValid(bd, p), false);
+    });
+
     test('no reclaim before the first meld', () {
       final p = planTurn(
         board: start,

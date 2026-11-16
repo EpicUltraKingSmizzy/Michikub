@@ -249,6 +249,20 @@ class Layout {
   static Board moveSet(Board board, List<int> tiles, int row, int col) =>
       place(board, tiles, row, col);
 
+  /// Tap-to-attach: the end of [set] that [sel] joins (0 = before the first tile,
+  /// set.length = after the last), or null if neither end gives a valid set. When both work,
+  /// the end nearer the tapped tile ([tapIndex]) wins. With [allowPartial], a set of 1-2 tiles
+  /// may grow into a still-incomplete but compatible set.
+  static int? attachEnd(List<int> set, List<int> sel, int tapIndex, {bool allowPartial = false}) {
+    bool ok(List<int> c) => isValidMeld(c) || (allowPartial && set.length < 3 && isCompatible(c));
+    final atEnd = ok([...set, ...sel]);
+    final atStart = ok([...sel, ...set]);
+    if (atEnd && atStart) return tapIndex < set.length / 2 ? 0 : set.length;
+    if (atEnd) return set.length;
+    if (atStart) return 0;
+    return null;
+  }
+
   /// Joker reclaim: puts [tile] exactly where [joker] sits (same set, same cell) and takes
   /// the joker off the board. Returns null when the joker isn't on the board or the set
   /// would not be valid with [tile] in its place.

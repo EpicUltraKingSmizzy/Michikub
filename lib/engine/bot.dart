@@ -71,10 +71,6 @@ enum BotStepType {
 
   /// A tile taken out of a set on the board and set down alone.
   removeTile,
-
-  /// Joker reclaim: a rack tile put exactly where a table joker sits (the tile the joker
-  /// stood for); the joker is taken in hand and must be played again this turn.
-  swapJoker,
 }
 
 /// One MOVE: a single visible action on the table. Every step counts as exactly 1 move.
@@ -110,14 +106,12 @@ class BotStep {
     : this._(BotStepType.moveSet, tile: setTile, targetSetTile: toSetTile, atEnd: atEnd);
   const BotStep.split(int beforeTile) : this._(BotStepType.split, tile: beforeTile);
   const BotStep.removeTile(int tile) : this._(BotStepType.removeTile, tile: tile);
-  const BotStep.swapJoker(int tile, int joker) : this._(BotStepType.swapJoker, tile: tile, targetSetTile: joker);
 
   bool get isNewSet => type == BotStepType.newSet;
   bool get isExtension => type == BotStepType.extend;
 
   /// True when the step brings tiles from the rack (rather than moving table tiles).
-  bool get fromRack =>
-      type == BotStepType.newSet || type == BotStepType.extend || type == BotStepType.tileAt || type == BotStepType.swapJoker;
+  bool get fromRack => type == BotStepType.newSet || type == BotStepType.extend || type == BotStepType.tileAt;
 
   /// Every step is one move.
   int get moveCount => 1;
@@ -125,7 +119,7 @@ class BotStep {
   /// Rack tiles this step puts on the board.
   int get tileCount => switch (type) {
     BotStepType.newSet => tiles.length,
-    BotStepType.extend || BotStepType.tileAt || BotStepType.swapJoker => 1,
+    BotStepType.extend || BotStepType.tileAt => 1,
     _ => 0,
   };
 
@@ -143,14 +137,13 @@ class BotStep {
 class BotPlay {
   final List<BotStep> steps;
   const BotPlay(this.steps);
-  /// Rack tiles this play puts on the board (a reclaimed joker played again doesn't count).
-  int get tileCount => rackTiles.difference(reclaimedJokers).length;
+  int get tileCount => steps.fold(0, (s, x) => s + x.tileCount);
   int get moveCount => steps.length;
 
-  /// Table jokers this play takes back (and plays again).
+  /// Table jokers this play moves (joker reclaims).
   Set<int> get reclaimedJokers => {
     for (final s in steps)
-      if (s.type == BotStepType.swapJoker) s.targetSetTile!,
+      if (s.type == BotStepType.moveTile && isJoker(s.tile!)) s.tile!,
   };
 
   /// Rack tiles used, for telling plays apart.
@@ -272,8 +265,10 @@ List<List<int>> bestCombination(List<List<int>> cands, {int minPoints = 0, int? 
 ///  * two rack tiles put down together, plus a spare tile moved over from a table set that
 ///    stays valid without it (2 moves);
 ///  * a table run split so that a rack tile can start the second half (2 moves);
-///  * a joker reclaim: a rack tile swapped in for a table joker, then the joker played
-///    again at the end of a set or in a new set with two rack tiles (2 moves).
+///  * a joker reclaim, in honest moves: the table joker is moved to the end of another table
+///    set (1 move), or into a new set started with two rack tiles (2 moves: the pair, then
+///    the joker); then the rack tile the joker stood for is attached into the gap it left,
+///    which rejoins the set (1 move). 2 or 3 moves; the joker never leaves the table.
 List<BotPlay> findPlays(Board board, List<int> rack, {bool rackOnly = false}) {
   final out = <BotPlay>[];
   for (final m in candidateMelds(rack)) {
@@ -337,23 +332,39 @@ List<BotPlay> findPlays(Board board, List<int> rack, {bool rackOnly = false}) {
   }
   // Joker reclaim.
   final real = distinctRack.where((t) => !isJoker(t)).toList();
+  final realAll = rack.where((t) => !isJoker(t)).toList();
   for (final blk in blocks) {
-    for (final j in blk.tiles.where(isJoker)) {
+    for (var i = 0; i < blk.length; i++) {
+      final j = blk.tiles[i];
+      if (!isJoker(j)) continue;
       for (final t in real) {
-        final after = Layout.swapJoker(board, t, j);
-        if (after == null) continue;
-        final swap = BotStep.swapJoker(t, j);
-        for (final tb in after.blocks.where((b) => isValidMeld(b.tiles))) {
+        final swapped = [...blk.tiles]..[i] = t;
+        if (!isValidMeld(swapped)) continue;
+        // The rack tile goes into the joker's old cell, attached to its neighbour.
+        final fill = i > 0 ? BotStep.extend(t, blk.tiles[i - 1], true) : BotStep.extend(t, blk.tiles[1], false);
+        // Where the joker goes: the end of another table set...
+        for (final tb in blocks) {
+          if (identical(tb, blk)) continue;
           if (isValidMeld([...tb.tiles, j])) {
-            out.add(BotPlay([swap, BotStep.moveTile(j, toSetTile: tb.tiles.first, index: tb.length)]));
+            out.add(BotPlay([BotStep.moveTile(j, toSetTile: tb.tiles.first, index: tb.length), fill]));
           } else if (isValidMeld([j, ...tb.tiles])) {
-            out.add(BotPlay([swap, BotStep.moveTile(j, toSetTile: tb.tiles.first, index: 0)]));
+            out.add(BotPlay([BotStep.moveTile(j, toSetTile: tb.tiles.first, index: 0), fill]));
           }
         }
-        final rest = [...rack]..remove(t);
-        for (final m in candidateMelds([...rest, j])) {
-          if (m.length == 3 && m.contains(j) && m.where(isJoker).length == 1) {
-            out.add(BotPlay([swap, BotStep.newSet(m)]));
+        // ...or a new set with two rack tiles.
+        final rest = [...realAll]..remove(t);
+        final seenPairs = <String>{};
+        for (var x = 0; x < rest.length; x++) {
+          for (var y = x + 1; y < rest.length; y++) {
+            final pair = [rest[x], rest[y]]..sort((p, q) => runSortKey(p) - runSortKey(q));
+            final key = pair.map((u) => '${tileColor(u).index}/${tileNumber(u)}').join(',');
+            if (!seenPairs.add(key) || !isCompatible(pair)) continue;
+            for (var at = 0; at <= 2; at++) {
+              final trio = [...pair]..insert(at, j);
+              if (!isValidMeld(trio)) continue;
+              out.add(BotPlay([BotStep.newSet(pair), BotStep.moveTile(j, toSetTile: pair.first, index: at), fill]));
+              break;
+            }
           }
         }
       }
@@ -464,6 +475,14 @@ Board applyBotStep(Board board, BotStep step) {
       return Layout.place(spot.board, step.tiles, spot.row, spot.col, merge: false);
     case BotStepType.extend:
       final blk = board.blockOf(step.targetSetTile!)!;
+      // Filling a one-cell gap between two parts of a set (where a moved joker was): the tile
+      // lands in the gap and rejoins the parts.
+      final gap = step.atEnd ? blk.end : blk.start - 1;
+      final beyond = step.atEnd ? gap + 1 : gap - 1;
+      if (gap >= 0 && gap < Board.width && beyond >= 0 && beyond < Board.width &&
+          board.rows[blk.row][gap] < 0 && board.rows[blk.row][beyond] >= 0) {
+        return Layout.place(board, [step.tile!], blk.row, gap);
+      }
       return Layout.insertInto(board, [step.tile!], step.targetSetTile!, step.atEnd ? blk.length : 0);
     case BotStepType.tileAt:
       return Layout.place(board, [step.tile!], step.row!, step.col!);
@@ -480,8 +499,6 @@ Board applyBotStep(Board board, BotStep step) {
       return Layout.split(board, step.tile!);
     case BotStepType.removeTile:
       return _alone(board, [step.tile!]);
-    case BotStepType.swapJoker:
-      return Layout.swapJoker(board, step.tile!, step.targetSetTile!) ?? board;
   }
 }
 

@@ -77,6 +77,10 @@ class _GameScreenState extends State<GameScreen> {
   /// My rack order (with gaps) when my turn started, for Reset.
   List<int> _turnStartOrder = const [];
   final Set<int> _selected = {};
+  /// The selection came from a long-press that was released without moving (several tiles,
+  /// or a whole board set): tap a spot or a set to move it there.
+  bool _groupSel = false;
+  bool _longPressing = false;
   final Set<int> _flash = {};
   final Set<int> _shine = {};
   /// Table jokers taken back this turn (in hand until they're played again).
@@ -241,6 +245,7 @@ class _GameScreenState extends State<GameScreen> {
     _history.add(working);
     working = b;
     _selected.clear();
+    _groupSel = false;
     if (moved != null && moved.isNotEmpty) {
       final blk = b.blockOf(moved.first);
       if (blk != null && isValidMeld(blk.tiles) && prefs.highlightValid) {
@@ -340,7 +345,17 @@ class _GameScreenState extends State<GameScreen> {
     final cell = _dropCell();
     _drag = null;
     final tiles = d.tiles;
+    final fromLongPress = _longPressing;
+    _longPressing = false;
     if (!d.moved) {
+      // Long-press released in place: keep the grabbed tiles selected.
+      if (fromLongPress) {
+        _selected
+          ..clear()
+          ..addAll(tiles);
+        _groupSel = true;
+        _haptic();
+      }
       setState(() {});
       return;
     }
@@ -424,7 +439,11 @@ class _GameScreenState extends State<GameScreen> {
   void _onTap(int t) {
     if (_drag != null) return;
     if (_selected.contains(t)) {
-      setState(() => _selected.remove(t));
+      // Tapping the selection again deselects it (all of it).
+      setState(() {
+        _selected.clear();
+        _groupSel = false;
+      });
       return;
     }
     if (_selected.isNotEmpty && _onBoard(t) && _myTurn && !_selected.contains(t)) {
@@ -436,12 +455,14 @@ class _GameScreenState extends State<GameScreen> {
       _selected
         ..clear()
         ..add(t);
+      _groupSel = false;
     });
     _haptic();
   }
 
-  /// Tap a tile, then tap a set: the tile joins the set if that makes a
-  /// valid set. Jokers and group tiles go to the end nearer the tap.
+  /// Tap a tile (or long-press a run/group/set and let go), then tap a set: the tiles join
+  /// the set if that makes a valid set, at the end nearer the tap when both ends work.
+  /// Otherwise the selection flashes red and stays selected.
   void _autoPlace(List<int> sel, int target) {
     if (_tryReclaim(sel, target)) return;
     final why = _boardBlock(sel);
@@ -452,25 +473,15 @@ class _GameScreenState extends State<GameScreen> {
     final tmp = working.copy()..removeTiles(sel);
     final blk = tmp.blockOf(target);
     if (blk == null) return;
-    final ends = <int>[blk.length, 0];
-    final isGroup = analyzeMeld(blk.tiles)?.kind == MeldKind.group || (blk.length < 3 && !_looksLikeRun(blk.tiles));
-    if (sel.any(isJoker) || isGroup) {
-      final tapIndex = blk.tiles.indexOf(target);
-      if (tapIndex < blk.length / 2) ends.setAll(0, [0, blk.length]);
+    // The end nearer the tap when both ends work.
+    final at = Layout.attachEnd(blk.tiles, sel, blk.tiles.indexOf(target), allowPartial: true);
+    if (at != null) {
+      _groupSel = false;
+      _setWorking(Layout.insertInto(tmp, sel, blk.tiles.first, at), moved: sel);
+      return;
     }
-    for (final at in ends) {
-      final cand = [...blk.tiles.sublist(0, at), ...sel, ...blk.tiles.sublist(at)];
-      if (isValidMeld(cand) || (blk.length < 3 && isCompatible(cand))) {
-        _setWorking(Layout.insertInto(tmp, sel, blk.tiles.first, at), moved: sel);
-        return;
-      }
-    }
+    // Not valid there: flash red, keep the selection.
     _flashRed(sel);
-  }
-
-  bool _looksLikeRun(List<int> ts) {
-    final real = ts.where((t) => !isJoker(t)).toList();
-    return real.length >= 2 && tileNumber(real[0]) != tileNumber(real[1]);
   }
 
   void _onBoardTapUp(TapUpDetails d) {
@@ -488,11 +499,25 @@ class _GameScreenState extends State<GameScreen> {
       _flashRed(sel, why);
       return;
     }
+    if (_groupSel) {
+      // A long-press selection lands as a new set at the tapped spot (snap and layout rules apply).
+      _groupSel = false;
+      _setWorking(Layout.place(working, sel, c.row, c.col, merge: false), moved: sel);
+      return;
+    }
     _setWorking(_placeAt(sel, c.row, c.col, 0), moved: sel);
   }
 
   void _onRackTapUp(TapUpDetails d) {
     final back = _selected.where(_onBoard).toList();
+    // Rack background: a long-press selection (or any rack selection) is deselected.
+    if (_selected.isNotEmpty && (_groupSel || back.isEmpty)) {
+      setState(() {
+        _selected.clear();
+        _groupSel = false;
+      });
+      return;
+    }
     if (back.isEmpty || !_myTurn) return;
     if (back.any((t) => _startTiles.contains(t) && !_reclaimed.contains(t))) {
       _flashRed(back, 'Tiles already on the table stay on the table.');
@@ -520,7 +545,7 @@ class _GameScreenState extends State<GameScreen> {
   void _onLongPress(int t, Offset global) {
     if (_onBoard(t)) {
       final blk = _shown.blockOf(t);
-      if (blk != null) _startDrag(blk.tiles, global);
+      if (blk != null) _startLongDrag(blk.tiles, global);
       return;
     }
     // Rack: pick up the neighbouring tiles that form a run or group.
@@ -534,10 +559,17 @@ class _GameScreenState extends State<GameScreen> {
       b++;
     }
     if (b > a) {
-      _startDrag(shown.sublist(a, b + 1), global);
+      _startLongDrag(shown.sublist(a, b + 1), global);
     } else {
       _onTap(t);
     }
+  }
+
+  /// A long-press grab: drag it, or release without moving to keep it selected.
+  void _startLongDrag(List<int> tiles, Offset global) {
+    final had = _drag != null;
+    _startDrag(tiles, global);
+    _longPressing = !had && _drag != null;
   }
 
   // --- buttons -------------------------------------------------------------

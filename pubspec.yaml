@@ -1,7 +1,7 @@
 name: michikub
 description: "Michikub: an ad-free, phone-to-phone tile game for 2 to 4 friends."
 publish_to: 'none'
-version: 0.1.2+3
+version: 0.1.3+4
 
 environment:
   sdk: ^3.9.0
@@ -43,3 +43,5 @@ flutter_launcher_icons:
   image_path: "assets/icon/michikub_icon_1024.png"
   adaptive_icon_background: "assets/icon/michikub_icon_android_background.png"
   adaptive_icon_foreground: "assets/icon/michikub_icon_android_foreground.png"
+  # The foreground art already sits inside the 66dp safe zone, so no extra inset (the default 16% shrank the face).
+  adaptive_icon_foreground_inset: 0

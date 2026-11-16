@@ -246,3 +246,42 @@ class MkScaffold extends StatelessWidget {
 }
 
 const seatColors = [Color(0xFFB0202C), Color(0xFF2F5FB0), Color(0xFF2E7D5B), Color(0xFFB07A1C)];
+
+/// A dialog for typing into, built to survive a phone in landscape with the keyboard taking
+/// most of the height: the title, content and buttons scroll together (buttons always below
+/// the content), the title and spacing shrink when space is tight, and text fields keep their
+/// natural height.
+class MkFormDialog extends StatelessWidget {
+  /// Optional: no title row at all when null.
+  final String? title;
+  final Widget content;
+  final List<Widget> actions;
+  final double maxWidth;
+  const MkFormDialog({super.key, this.title, required this.content, required this.actions, this.maxWidth = 460});
+
+  /// Below this height (dialog space left above the keyboard) the layout gets compact.
+  static const double tightHeight = 240;
+
+  @override
+  Widget build(BuildContext context) => Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 6),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: maxWidth),
+          child: LayoutBuilder(builder: (context, c) {
+            final tight = c.maxHeight < tightHeight;
+            return SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(20, tight ? 8 : 18, 20, tight ? 2 : 10),
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                if (title != null) ...[
+                  Text(title!, style: MK.title(tight ? 16 : 20)),
+                  SizedBox(height: tight ? 2 : 10),
+                ],
+                content,
+                SizedBox(height: tight ? 0 : 6),
+                Wrap(alignment: WrapAlignment.end, spacing: 4, children: actions),
+              ]),
+            );
+          }),
+        ),
+      );
+}

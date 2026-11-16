@@ -28,9 +28,17 @@ class _RulesEditorState extends State<RulesEditor> {
     final ctl = TextEditingController();
     final name = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Save these rules', style: MK.title(20)),
-        content: TextField(controller: ctl, autofocus: true, maxLength: 24, decoration: const InputDecoration(hintText: 'Preset name')),
+      // No title (your call): just the name field and the buttons.
+      builder: (ctx) => MkFormDialog(
+        content: TextField(
+          controller: ctl,
+          autofocus: true,
+          maxLength: 24,
+          textInputAction: TextInputAction.done,
+          // The keyboard's Done saves.
+          onSubmitted: (_) => Navigator.pop(ctx, ctl.text.trim()),
+          decoration: const InputDecoration(hintText: 'Preset name', counterText: ''),
+        ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           TextButton(onPressed: () => Navigator.pop(ctx, ctl.text.trim()), child: const Text('Save')),

@@ -105,12 +105,9 @@ class _HostLobbyScreenState extends State<HostLobbyScreen> {
             setD(() => err = '$e');
           });
         }
-        return AlertDialog(
-          title: Text('Invite by message', style: MK.title(20)),
-          content: SizedBox(
-            width: 460,
-            child: SingleChildScrollView(
-              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        return MkFormDialog(
+          title: 'Invite by message',
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('1. Copy this invite and send it to one friend in any chat app.', style: MK.body(13)),
                 const SizedBox(height: 6),
                 if (err != null) Text(err!, style: MK.body(12, color: MK.danger)),
@@ -124,8 +121,6 @@ class _HostLobbyScreenState extends State<HostLobbyScreen> {
                 const SizedBox(height: 6),
                 TextField(controller: replyCtl, maxLines: 3, decoration: const InputDecoration(hintText: 'MICHIKUB-REPLY:…')),
               ]),
-            ),
-          ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
             TextButton(

@@ -35,9 +35,14 @@ class NetHost extends ChangeNotifier {
   final List<StreamSubscription<dynamic>> _subs = [];
   PeerLink? _pendingManual;
 
-  NetHost(this.myName, this.rules) {
+  /// [open] = false skips opening the room on the matchmaking service (tests).
+  NetHost(this.myName, this.rules, {bool open = true}) {
     seats.add(NetSeat(PlayerInfo('host', myName, SeatKind.human)));
-    _open();
+    if (open) {
+      _open();
+    } else {
+      opening = false;
+    }
   }
 
   Future<void> _open() async {

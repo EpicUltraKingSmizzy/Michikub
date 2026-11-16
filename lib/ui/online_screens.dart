@@ -37,15 +37,34 @@ class RoomCode extends StatelessWidget {
 }
 
 class HostLobbyScreen extends StatefulWidget {
-  const HostLobbyScreen({super.key});
+  /// A room that's already been made (tests); normally the screen opens its own.
+  final NetHost? net;
+  const HostLobbyScreen({super.key, this.net});
   @override
   State<HostLobbyScreen> createState() => _HostLobbyScreenState();
 }
 
 class _HostLobbyScreenState extends State<HostLobbyScreen> {
   final prefs = AppPrefs.instance;
-  late final NetHost net = NetHost(prefs.name, prefs.rules)..addListener(_changed);
+  late final NetHost net = (widget.net ?? NetHost(prefs.name, prefs.rules))..addListener(_changed);
   bool _started = false;
+
+  /// Back (app bar, Android back button or gesture, iOS swipe) asks first. Yes closes the room
+  /// (dispose shuts it down, disconnecting anyone who joined) and goes back to Home.
+  Future<void> _confirmExit() async {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Exit the room?', style: MK.title(20)),
+        content: Text('The room closes and anyone who joined is disconnected.', style: MK.body(13)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Yes')),
+          FilledButton(autofocus: true, onPressed: () => Navigator.pop(ctx, false), child: const Text('No')),
+        ],
+      ),
+    );
+    if (yes == true && mounted) Navigator.of(context).popUntil((r) => r.isFirst);
+  }
 
   void _changed() {
     if (mounted) setState(() {});
@@ -128,7 +147,12 @@ class _HostLobbyScreenState extends State<HostLobbyScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return MkScaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _confirmExit();
+      },
+      child: MkScaffold(
       title: 'Host a game',
       actions: [
         Text(net.canStart ? '' : 'Need 2+ players  ', style: MK.body(12, color: MK.gold)),
@@ -210,6 +234,7 @@ class _HostLobbyScreenState extends State<HostLobbyScreen> {
           ),
         ),
       ]),
+      ),
     );
   }
 }

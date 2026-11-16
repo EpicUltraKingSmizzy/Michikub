@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../app/bot_roster.dart';
 import '../app/session.dart';
 import '../engine/bot.dart';
 import '../engine/host.dart';
@@ -65,7 +66,9 @@ class NetHost extends ChangeNotifier {
   void addBot(BotLevel level) {
     if (full) return;
     _bots++;
-    seats.add(NetSeat(PlayerInfo('bot$_bots', 'Bot $_bots', SeatKind.bot, level: level)));
+    final used = {for (final s in seats) if (s.info.avatar != null) s.info.avatar!};
+    final robot = pickRobots(1, exclude: {for (final r in robotRoster) if (used.contains(r.avatar)) r.id}).first;
+    seats.add(NetSeat(PlayerInfo('bot$_bots', robot.name, SeatKind.bot, level: level, avatar: robot.avatar)));
     _broadcastLobby();
     notifyListeners();
   }

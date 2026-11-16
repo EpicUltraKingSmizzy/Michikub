@@ -786,7 +786,9 @@ class _GameScreenState extends State<GameScreen> {
         ],
       ),
       alignment: Alignment.center,
-      child: sv.info.kind == SeatKind.bot
+      child: sv.info.avatar != null
+          ? ClipOval(child: Image.asset(sv.info.avatar!, width: size, height: size, fit: BoxFit.cover))
+          : sv.info.kind == SeatKind.bot
           ? Icon(Icons.smart_toy_outlined, color: Colors.white, size: size * .55)
           : Text(sv.info.name.isEmpty ? '?' : sv.info.name.characters.first.toUpperCase(),
               style: MK.body(size * .45, color: Colors.white, weight: FontWeight.w700)),

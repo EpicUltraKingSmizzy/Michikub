@@ -17,14 +17,18 @@ class PlayerInfo {
   final String name;
   final SeatKind kind;
   final BotLevel level;
-  const PlayerInfo(this.id, this.name, this.kind, {this.level = BotLevel.medium});
 
-  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'kind': kind.name, 'level': level.name};
+  /// Avatar image asset (robots), or null for the initial-letter avatar.
+  final String? avatar;
+  const PlayerInfo(this.id, this.name, this.kind, {this.level = BotLevel.medium, this.avatar});
+
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'kind': kind.name, 'level': level.name, 'avatar': avatar};
   factory PlayerInfo.fromJson(Map<String, dynamic> j) => PlayerInfo(
         j['id'] as String,
         j['name'] as String,
         SeatKind.values.byName(j['kind'] as String),
         level: BotLevel.values.byName(j['level'] as String? ?? 'medium'),
+        avatar: j['avatar'] as String?,
       );
 }
 

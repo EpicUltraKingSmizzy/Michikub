@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../app/bot_roster.dart';
 import '../app/prefs.dart';
 import '../app/session.dart';
 import '../engine/host.dart';
@@ -7,8 +8,6 @@ import '../engine/rules.dart';
 import 'game_screen.dart';
 import 'rules_editor.dart';
 import 'theme.dart';
-
-const botNames = ['Rosa', 'Theo', 'Juno'];
 
 String levelName(BotLevel l) => switch (l) {
       BotLevel.easy => 'Easy',
@@ -74,7 +73,7 @@ class _PracticeSetupScreenState extends State<PracticeSetupScreen> {
                 child: Row(children: [
                   const Icon(Icons.smart_toy_outlined, color: MK.gold, size: 20),
                   const SizedBox(width: 8),
-                  SizedBox(width: 80, child: Text(botNames[i], style: MK.body(14))),
+                  SizedBox(width: 80, child: Text('Robot ${i + 1}', style: MK.body(14))),
                   Expanded(
                     child: SegmentedButton<BotLevel>(
                       segments: [for (final l in BotLevel.values) ButtonSegment(value: l, label: Text(levelName(l)))],
@@ -91,7 +90,7 @@ class _PracticeSetupScreenState extends State<PracticeSetupScreen> {
                 ]),
               ),
             const SizedBox(height: 4),
-            Text('Easy plays up to 3 tiles a turn and misses more; Medium up to 6; Hard plays everything it finds.',
+            Text('Robots are picked at random from the roster. Easy plays up to 3 tiles a turn and misses more; Medium up to 6; Hard plays everything it finds.',
                 style: MK.body(11, color: MK.gold)),
           ]),
         ),
@@ -105,8 +104,8 @@ class _PracticeSetupScreenState extends State<PracticeSetupScreen> {
             prefs.save();
             final players = [
               PlayerInfo('me', prefs.name, SeatKind.human),
-              for (var i = 0; i < bots.length; i++)
-                PlayerInfo('bot$i', '${botNames[i]} (${levelName(bots[i])})', SeatKind.bot, level: bots[i]),
+              for (final (i, robot) in pickRobots(bots.length).indexed)
+                PlayerInfo('bot$i', '${robot.name} (${levelName(bots[i])})', SeatKind.bot, level: bots[i], avatar: robot.avatar),
             ];
             startLocalGame(context, players, rules, hotSeat: false);
           }),

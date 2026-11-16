@@ -28,7 +28,9 @@ class PeerLink {
   final _closed = Completer<void>();
 
   PeerLink(this.peerId, this.pc) {
+    pc.onIceConnectionState = (s) => netLog('ice $s');
     pc.onConnectionState = (s) {
+      netLog('pc $s');
       if (s == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
           s == RTCPeerConnectionState.RTCPeerConnectionStateClosed ||
           s == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
@@ -92,6 +94,9 @@ class BrokerNode {
   final WebSocketChannel _ws;
   Timer? _heartbeat;
   final Map<String, PeerLink> _byConn = {};
+  final Map<String, List<RTCIceCandidate>> _early = {};
+  final Set<String> _remoteSet = {};
+  Future<void> _queue = Future.value();
   final _incoming = StreamController<PeerLink>.broadcast();
   final _errors = StreamController<String>.broadcast();
 
@@ -122,7 +127,11 @@ class BrokerNode {
           if (!ready.isCompleted) ready.completeError(msg);
           node._errors.add(msg);
         } else {
-          node._handle(m);
+          // Handle broker messages strictly in order: a candidate must never
+          // be applied before its offer or answer.
+          node._queue = node._queue.then((_) => node._handle(m)).catchError((Object e) {
+            netLog('broker message failed: $e');
+          });
         }
       },
       onError: (e) {
@@ -148,6 +157,7 @@ class BrokerNode {
   Future<void> _handle(Map<String, dynamic> m) async {
     final type = m['type'] as String?;
     final src = m['src'] as String?;
+    netLog('broker $type from $src');
     final payload = (m['payload'] as Map?)?.cast<String, dynamic>();
     if (payload == null || src == null) return;
     final connId = payload['connectionId'] as String?;
@@ -161,6 +171,7 @@ class BrokerNode {
         pc.onIceCandidate = (c) => _sendCandidate(src, connId, c);
         final sdp = (payload['sdp'] as Map).cast<String, dynamic>();
         await pc.setRemoteDescription(RTCSessionDescription(sdp['sdp'] as String, sdp['type'] as String));
+        await _remoteReady(connId, pc);
         final answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         _send({
@@ -179,12 +190,29 @@ class BrokerNode {
         if (link == null) return;
         final sdp = (payload['sdp'] as Map).cast<String, dynamic>();
         await link.pc.setRemoteDescription(RTCSessionDescription(sdp['sdp'] as String, sdp['type'] as String));
+        await _remoteReady(connId, link.pc);
       case 'CANDIDATE':
-        final link = _byConn[connId];
         final c = (payload['candidate'] as Map?)?.cast<String, dynamic>();
-        if (link == null || c == null) return;
-        await link.pc.addCandidate(
-            RTCIceCandidate(c['candidate'] as String?, c['sdpMid'] as String?, c['sdpMLineIndex'] as int?));
+        if (c == null) return;
+        final cand = RTCIceCandidate(c['candidate'] as String?, c['sdpMid'] as String?, c['sdpMLineIndex'] as int?);
+        final link = _byConn[connId];
+        if (link == null || !_remoteSet.contains(connId)) {
+          (_early[connId] ??= []).add(cand);
+          return;
+        }
+        await link.pc.addCandidate(cand);
+    }
+  }
+
+  /// The remote description is set: apply candidates that arrived early.
+  Future<void> _remoteReady(String connId, RTCPeerConnection pc) async {
+    _remoteSet.add(connId);
+    for (final c in _early.remove(connId) ?? const <RTCIceCandidate>[]) {
+      try {
+        await pc.addCandidate(c);
+      } catch (e) {
+        netLog('candidate failed: $e');
+      }
     }
   }
 
@@ -297,5 +325,5 @@ class ManualSignal {
 }
 
 void netLog(Object o) {
-  if (kDebugMode) debugPrint('[net] $o');
+  if (!kReleaseMode) debugPrint('[net] $o');
 }

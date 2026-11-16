@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'app/bot_roster.dart';
 import 'app/prefs.dart';
 import 'engine/host.dart';
 import 'engine/rules.dart';
@@ -52,10 +53,10 @@ class _StartState extends State<_Start> {
         if (demo == 'hotseat') {
           startLocalGame(context, const [PlayerInfo('p0', 'Michi', SeatKind.human), PlayerInfo('p1', 'Sam', SeatKind.human)], rules, hotSeat: true);
         } else {
-          final names = ['Jeff', 'Sam', 'Alex'];
           startLocalGame(context, [
             const PlayerInfo('me', 'Michi', SeatKind.human),
-            for (var i = 0; i < bots; i++) PlayerInfo('bot$i', names[i], SeatKind.bot, level: BotLevel.hard),
+            for (final (i, r) in robotRoster.take(bots).indexed)
+              PlayerInfo('bot$i', r.name, SeatKind.bot, level: BotLevel.hard, avatar: r.avatar),
           ], rules, hotSeat: false);
         }
       });

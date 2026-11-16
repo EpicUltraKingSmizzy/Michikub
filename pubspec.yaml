@@ -26,6 +26,7 @@ flutter:
   assets:
     - assets/jokers/
     - assets/textures/
+    - assets/bots/
     - assets/icon/michikub_icon_1024.png
   fonts:
     - family: Rubik

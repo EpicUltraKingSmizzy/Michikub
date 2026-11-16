@@ -67,11 +67,11 @@ void main() {
               onPressed: () => showDialog<void>(
                 context: context,
                 builder: (ctx) => MkFormDialog(
-                  title: 'Invite by message',
+                  title: 'Tall form',
                   content: Column(mainAxisSize: MainAxisSize.min, children: [
-                    const Text('1. Copy this invite and send it to one friend in any chat app.'),
+                    const Text('Some explanation that takes a line or two of space above the field.'),
                     const SizedBox(height: 40),
-                    const Text('2. Paste the reply they send back:'),
+                    const Text('Type here:'),
                     const TextField(maxLines: 3, autofocus: true),
                   ]),
                   actions: [
@@ -92,9 +92,9 @@ void main() {
     // Scroll to the buttons; they sit below the field and stay tappable.
     await tester.ensureVisible(find.text('Connect'));
     await tester.pumpAndSettle();
-    expectStacked(tester, find.byType(TextField), [find.text('Close'), find.text('Connect')], find.text('Invite by message'));
+    expectStacked(tester, find.byType(TextField), [find.text('Close'), find.text('Connect')], find.text('Tall form'));
     await tester.tap(find.text('Close'));
     await tester.pumpAndSettle();
-    expect(find.text('Invite by message'), findsNothing);
+    expect(find.text('Tall form'), findsNothing);
   });
 }

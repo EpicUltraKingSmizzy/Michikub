@@ -267,63 +267,6 @@ class BrokerNode {
   }
 }
 
-/// Copy-and-paste signalling: no matchmaking service at all. The host
-/// shares an invite text; the friend pastes it and sends back a reply text.
-class ManualSignal {
-  static const invitePrefix = 'MICHIKUB-INVITE:';
-  static const replyPrefix = 'MICHIKUB-REPLY:';
-
-  static Future<String> _gathered(RTCPeerConnection pc) async {
-    final done = Completer<void>();
-    pc.onIceGatheringState = (s) {
-      if (s == RTCIceGatheringState.RTCIceGatheringStateComplete && !done.isCompleted) done.complete();
-    };
-    await done.future.timeout(const Duration(seconds: 4), onTimeout: () {});
-    final d = await pc.getLocalDescription();
-    return d!.sdp!;
-  }
-
-  static String _encode(String prefix, String sdp) => prefix + base64Url.encode(utf8.encode(sdp));
-  static String _decode(String prefix, String text) {
-    final t = text.trim();
-    final i = t.indexOf(prefix);
-    if (i < 0) throw 'That doesn\'t look like a Michikub ${prefix == invitePrefix ? 'invite' : 'reply'}.';
-    final body = t.substring(i + prefix.length).split(RegExp(r'\s')).first;
-    return utf8.decode(base64Url.decode(body));
-  }
-
-  /// Host side: makes an invite. Call [acceptReply] with the friend's reply.
-  static Future<(String, PeerLink)> createInvite() async {
-    final pc = await createPeerConnection({'iceServers': kIceServers});
-    final link = PeerLink('manual_${randomToken(6)}', pc);
-    final dc = await pc.createDataChannel('michikub', RTCDataChannelInit()..ordered = true);
-    link.attach(dc);
-    final offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    final sdp = await _gathered(pc);
-    return (_encode(invitePrefix, sdp), link);
-  }
-
-  static Future<void> acceptReply(PeerLink link, String reply) async {
-    final sdp = _decode(replyPrefix, reply);
-    await link.pc.setRemoteDescription(RTCSessionDescription(sdp, 'answer'));
-  }
-
-  /// Guest side: turns an invite into a reply, and returns the link that
-  /// opens once the host pastes the reply.
-  static Future<(String, PeerLink)> answerInvite(String invite) async {
-    final sdp = _decode(invitePrefix, invite);
-    final pc = await createPeerConnection({'iceServers': kIceServers});
-    final link = PeerLink('host', pc);
-    pc.onDataChannel = link.attach;
-    await pc.setRemoteDescription(RTCSessionDescription(sdp, 'offer'));
-    final answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    final local = await _gathered(pc);
-    return (_encode(replyPrefix, local), link);
-  }
-}
-
 void netLog(Object o) {
   if (!kReleaseMode) debugPrint('[net] $o');
 }

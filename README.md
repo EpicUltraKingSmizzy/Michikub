@@ -62,7 +62,6 @@ On the web build, `?demo=practice&seed=7` (or `?demo=hotseat`) jumps straight in
 
 - The host's phone runs the authoritative `GameHost`. Each guest receives only its own rack, plus the shared table and tile counts.
 - Matchmaking uses the free public **PeerJS broker** (`0.peerjs.com`), which only passes connection details. After that the phones talk directly over a WebRTC data channel, using Google's public STUN servers.
-- **Invite by message** skips the broker completely: the host copies an invite, the friend pastes it and sends back a reply.
 - **Not yet tested phone to phone.** The broker handshake was checked from the build machine, but WebRTC can't open a connection in that sandbox, so the first real test is on your phones.
 - Some strict networks (certain mobile carriers or workplace Wi-Fi) block direct connections. There is deliberately no relay (TURN) server, so test with your group early.
 

@@ -33,7 +33,6 @@ class NetHost extends ChangeNotifier {
   int _bots = 0;
   int _guests = 0;
   final List<StreamSubscription<dynamic>> _subs = [];
-  PeerLink? _pendingManual;
 
   /// [open] = false skips opening the room on the matchmaking service (tests).
   NetHost(this.myName, this.rules, {bool open = true}) {
@@ -176,22 +175,6 @@ class NetHost extends ChangeNotifier {
     }
   }
 
-  /// Copy-and-paste invite for one friend (no matchmaking service).
-  Future<String> createManualInvite() async {
-    final (text, link) = await ManualSignal.createInvite();
-    _pendingManual = link;
-    return text;
-  }
-
-  Future<void> acceptManualReply(String reply) async {
-    final link = _pendingManual;
-    if (link == null) throw 'Make an invite first.';
-    await ManualSignal.acceptReply(link, reply);
-    _pendingManual = null;
-    await link.opened.timeout(const Duration(seconds: 20), onTimeout: () => throw 'The connection did not open.');
-    _onLink(link);
-  }
-
   NetHostSession start() {
     final h = GameHost(players: [for (final s in seats) s.info], rules: rules);
     host = h;
@@ -287,11 +270,6 @@ class NetGuest extends ChangeNotifier {
 
   NetGuest.code(this.myName, this.code) {
     _connectCode();
-  }
-
-  NetGuest.manual(this.myName, PeerLink l) : code = '' {
-    status = 'Waiting for the host to paste your reply…';
-    l.opened.then((_) => _attach(l));
   }
 
   Future<void> _connectCode() async {

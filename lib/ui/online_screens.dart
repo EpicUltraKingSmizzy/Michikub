@@ -7,7 +7,6 @@ import '../app/prefs.dart';
 import '../engine/host.dart';
 import '../net/invite_link.dart';
 import '../net/online.dart';
-import '../net/peer.dart';
 import 'avatar.dart';
 import 'game_screen.dart';
 import 'rules_editor.dart';
@@ -93,53 +92,6 @@ class _HostLobbyScreenState extends State<HostLobbyScreen> {
     }
   }
 
-  Future<void> _manualInvite() async {
-    String? invite;
-    String? err;
-    final replyCtl = TextEditingController();
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(builder: (ctx, setD) {
-        if (invite == null && err == null) {
-          net.createManualInvite().then((t) => setD(() => invite = t)).catchError((Object e) {
-            setD(() => err = '$e');
-          });
-        }
-        return MkFormDialog(
-          title: 'Invite by message',
-          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('1. Copy this invite and send it to one friend in any chat app.', style: MK.body(13)),
-                const SizedBox(height: 6),
-                if (err != null) Text(err!, style: MK.body(12, color: MK.danger)),
-                if (invite == null && err == null) const LinearProgressIndicator(),
-                if (invite != null)
-                  GoldButton('Copy invite', icon: Icons.copy, compact: true, onPressed: () {
-                    Clipboard.setData(ClipboardData(text: invite!));
-                  }),
-                const SizedBox(height: 12),
-                Text('2. Paste the reply they send back:', style: MK.body(13)),
-                const SizedBox(height: 6),
-                TextField(controller: replyCtl, maxLines: 3, decoration: const InputDecoration(hintText: 'MICHIKUB-REPLY:…')),
-              ]),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
-            TextButton(
-              onPressed: () async {
-                try {
-                  await net.acceptManualReply(replyCtl.text);
-                  if (ctx.mounted) Navigator.pop(ctx);
-                } catch (e) {
-                  setD(() => err = '$e');
-                }
-              },
-              child: const Text('Connect'),
-            ),
-          ],
-        );
-      }),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -177,13 +129,14 @@ class _HostLobbyScreenState extends State<HostLobbyScreen> {
               ]),
             ),
             const SizedBox(width: 12),
-            Column(children: [
+            // Share and Copy invite, the same width, stacked.
+            IntrinsicWidth(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               GoldButton('Share', icon: Icons.share, compact: true, onPressed: net.code.isEmpty ? null : () => _shareInvite(net.code)),
               const SizedBox(height: 8),
               GoldButton('Copy invite', icon: Icons.copy, compact: true, crimson: true, onPressed: net.code.isEmpty ? null : () => _copyInvite(net.code)),
-              const SizedBox(height: 8),
-              GoldButton('Invite by message', icon: Icons.message_outlined, compact: true, crimson: true, onPressed: net.full ? null : _manualInvite),
-            ]),
+              ]),
+            ),
           ]),
         ),
         const SizedBox(height: 12),
@@ -246,10 +199,6 @@ class _JoinScreenState extends State<JoinScreen> {
   final prefs = AppPrefs.instance;
   late final nameCtl = TextEditingController(text: prefs.name);
   late final codeCtl = TextEditingController(text: widget.initialCode ?? '');
-  final inviteCtl = TextEditingController();
-  String? reply;
-  String? err;
-  bool busy = false;
 
   void _saveName() {
     if (nameCtl.text.trim().isNotEmpty) {
@@ -264,38 +213,6 @@ class _JoinScreenState extends State<JoinScreen> {
     _saveName();
     final g = NetGuest.code(prefs.name, code);
     Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => GuestLobbyScreen(guest: g)));
-  }
-
-  Future<void> _answerInvite() async {
-    setState(() {
-      busy = true;
-      err = null;
-    });
-    try {
-      _saveName();
-      final (text, link) = await ManualSignal.answerInvite(inviteCtl.text);
-      setState(() => reply = text);
-      final g = NetGuest.manual(prefs.name, link);
-      if (!mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text('Send this reply to the host', style: MK.title(20)),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text('Copy it, send it back in the same chat, then tap Continue.', style: MK.body(13)),
-            const SizedBox(height: 10),
-            GoldButton('Copy reply', icon: Icons.copy, compact: true, onPressed: () => Clipboard.setData(ClipboardData(text: text))),
-          ]),
-          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Continue'))],
-        ),
-      );
-      if (!mounted) return;
-      Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => GuestLobbyScreen(guest: g)));
-    } catch (e) {
-      setState(() => err = '$e');
-    } finally {
-      if (mounted) setState(() => busy = false);
-    }
   }
 
   @override
@@ -329,22 +246,6 @@ class _JoinScreenState extends State<JoinScreen> {
               ),
               const SizedBox(width: 12),
               GoldButton('Join', icon: Icons.login, onPressed: _joinCode),
-            ]),
-          ]),
-        ),
-        const SizedBox(height: 12),
-        MkPanel(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text('Got an invite message instead?', style: MK.body(15, weight: FontWeight.w700)),
-            const SizedBox(height: 6),
-            TextField(controller: inviteCtl, maxLines: 2, decoration: const InputDecoration(hintText: 'Paste MICHIKUB-INVITE:…')),
-            const SizedBox(height: 8),
-            Row(children: [
-              GoldButton('Make my reply', icon: Icons.reply, compact: true, crimson: true, onPressed: busy ? null : _answerInvite),
-              const SizedBox(width: 10),
-              if (busy) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-              if (err != null) Expanded(child: Text(err!, style: MK.body(12, color: MK.danger))),
-              if (reply != null) Text('Reply ready', style: MK.body(12, color: MK.goldLight)),
             ]),
           ]),
         ),
@@ -390,7 +291,7 @@ class _GuestLobbyScreenState extends State<GuestLobbyScreen> {
   @override
   Widget build(BuildContext context) {
     return MkScaffold(
-      title: g.code.isEmpty ? 'Joining by invite' : 'Room ${g.code}',
+      title: 'Room ${g.code}',
       onTitleLongPress: g.code.isEmpty ? null : () => copyRoomCode(context, g.code),
       titleWidget: g.code.isEmpty
           ? null

@@ -15,7 +15,7 @@ An ad-free number-tile game for 2 to 4 friends. Phones connect directly to each 
 - **The table**: a mahogany table, a crimson velvet rack (10 per row, sliding up for a second row), gold face-down tiles for opponents, flying draw and play animations, and large suit symbols.
 - **Gestures**: drag anywhere. Long-press a rack tile to grab its run or group. Long-press a table set to move it. Double-tap to split a set. Tap a tile then tap a set to auto-place it. A Make space button and an invisible 27-space snap grid with automatic room-making.
 
-Computer players are picked at random from a roster of 12 robots, each with a picture and a tagline (`lib/app/bot_roster.dart`, `assets/bots/`). Practice setup shows who you're up against, and long-pressing a robot's avatar at the table shows its tagline. They decide a turn instantly and then play it out one action at a time: 2 s per new set, 1 s per split or set move, and 0.5 s per single tile. They follow the turn timer like everyone else.
+Computer players are picked at random from a roster of 6 robots, each with a picture and a tagline (`lib/app/bot_roster.dart`, `assets/bots/`). Practice setup shows who you're up against, and long-pressing a robot's avatar at the table shows its tagline. They decide a turn instantly and then play it out one action at a time: 2 s per new set, 1 s per split or set move, and 0.5 s per single tile. They follow the turn timer like everyone else.
 
 All play, solo modes included, goes through the same rules engine (`lib/engine/`): the host's phone validates every move.
 

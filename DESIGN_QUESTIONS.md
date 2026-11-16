@@ -46,21 +46,15 @@ Most numbers live in a small set of constants: `BotTuning` (lib/engine/bot.dart)
 32. **What may a bot do with under 5 seconds left?** Bots plan their turn as *moves*: groups of actions that each finish with a valid table (today, each new set and each extension is its own one-action move). With under 5 s left and a valid table, a bot only starts a move whose every action keeps the table valid. Otherwise it ends its turn right away instead of risking a reset. The 5 s is `BotTuning.safeZoneMs`. *Why:* this is your rule, and moves that end valid make the check simple and reliable. It's covered by unit tests in `test/bot_timer_test.dart`.
 33. **What can bots do on the table?** They put down new sets and extend the ends of existing sets. They don't rearrange or split sets. *Why:* it's simple, legal, and beatable. Hard bots that rearrange could come later.
 34. **What if a bot's tile cap stops it reaching the first-meld minimum?** It draws. *Why:* an Easy bot should sometimes struggle to get started.
-35. **Bot names and avatars?** There's a final roster of 12 robots in `lib/app/bot_roster.dart`. Each has an id, name, tagline and avatar picture in `assets/bots/robot_<name>.png`, scaled down from the 512 px art to 256 px:
+35. **Bot names and avatars?** There's a final roster of 6 robots (Pixel, Sparky, Lumi, Clank, Tank and Duke were cut from the earlier 12) in `lib/app/bot_roster.dart`. Each has an id, name, tagline and avatar picture in `assets/bots/robot_<name>.png`, scaled down from the 512 px art to 256 px:
     - Bolt: "Plays fast, thinks later."
     - Cogsworth: "Sorts every rack, judges yours."
-    - Pixel: "Loves a sneaky joker."
     - Rusty: "Been playing since tiles were wood."
     - Nova: "Dreams of the perfect 13-run."
-    - Clank: "Loud, lucky, and a little clumsy."
     - Echo: "Watches what you play, then copies it."
     - Gizmo: "Always rearranging something."
-    - Sparky: "Gets VERY excited about groups."
-    - Tank: "Says nothing. Wins anyway."
-    - Lumi: "Kind, cheerful, secretly ruthless."
-    - Duke: "Considers himself royalty of the table."
 
-    Practice setup picks N different robots at random as soon as it opens. It shows each robot's picture, name and tagline next to its difficulty choice, and Shuffle robots picks again. Difficulty is separate, so any robot can be Easy, Medium or Hard, and the level is added to the name in game, for example "Pixel (Medium)". Long-press a robot's avatar at the table to see its tagline. Bots added to an online lobby take a robot nobody at the table is using, and the lobby shows their level and tagline. The personalities are flavour only for now: every robot of the same difficulty plays the same way. *Why:* you approved this roster. Making the taglines change how each robot plays (Echo copying you, Sparky preferring groups) is a possible later step.
+    Practice setup picks N different robots at random as soon as it opens. It shows each robot's picture, name and tagline next to its difficulty choice, and Shuffle robots picks again. Difficulty is separate, so any robot can be Easy, Medium or Hard, and the level is added to the name in game, for example "Nova (Medium)". Long-press a robot's avatar at the table to see its tagline. Bots added to an online lobby take a robot nobody at the table is using, and the lobby shows their level and tagline. The personalities are flavour only for now: every robot of the same difficulty plays the same way. *Why:* you approved this roster. Making the taglines change how each robot plays (Echo copying you, Gizmo always rearranging) is a possible later step.
 36. **Can bots fill empty seats online?** Yes, the host can add Easy, Medium or Hard bots in the lobby. *Why:* a 2-person online game can become a 4-player table.
 
 ## D. Online play

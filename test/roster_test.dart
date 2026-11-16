@@ -5,11 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:michikub/app/bot_roster.dart';
 
 void main() {
-  test('roster has the 12 final robots with unique ids, names, taglines and avatars', () {
+  test('roster has the 6 final robots with unique ids, names, taglines and avatars', () {
     expect(robotRoster.map((r) => r.name).toList(),
-        ['Bolt', 'Cogsworth', 'Pixel', 'Rusty', 'Nova', 'Clank', 'Echo', 'Gizmo', 'Sparky', 'Tank', 'Lumi', 'Duke']);
+        ['Bolt', 'Cogsworth', 'Rusty', 'Nova', 'Echo', 'Gizmo']);
     for (final f in <Object Function(RobotProfile)>[(r) => r.id, (r) => r.name, (r) => r.tagline, (r) => r.avatar]) {
-      expect(robotRoster.map(f).toSet().length, 12);
+      expect(robotRoster.map(f).toSet().length, 6);
     }
     for (final r in robotRoster) {
       expect(r.tagline, isNotEmpty);
@@ -28,9 +28,9 @@ void main() {
         seen.addAll(p.map((r) => r.id));
       }
     }
-    expect(seen.length, 12, reason: 'every robot gets picked sometimes');
-    final rest = robotRoster.skip(10).map((r) => r.id).toSet();
-    final excluded = robotRoster.take(10).map((r) => r.id).toSet();
+    expect(seen.length, 6, reason: 'every robot gets picked sometimes');
+    final rest = robotRoster.skip(4).map((r) => r.id).toSet();
+    final excluded = robotRoster.take(4).map((r) => r.id).toSet();
     expect(pickRobots(3, exclude: excluded).map((r) => r.id).toSet(), rest);
   });
 }

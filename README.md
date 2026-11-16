@@ -4,6 +4,8 @@ An ad-free number-tile game for 2 to 4 friends. Phones connect directly to each 
 
 > Version 0.1.0 is the first playable build. Design choices made along the way are listed in [DESIGN_QUESTIONS.md](DESIGN_QUESTIONS.md) for review.
 
+![The table](docs/table.jpg)
+
 ## What's in it
 
 - **Practice vs bots**: you against 1 to 3 computer players, each set to Easy, Medium or Hard.
@@ -12,6 +14,8 @@ An ad-free number-tile game for 2 to 4 friends. Phones connect directly to each 
 - **House rules with saved presets**: first meld (Off or 3 to 50), starting hand (7 to 20), jokers (0 to 4: red, black, yellow, blue), turn timer (Off/30/60/120 s) and tiles drawn when passing (1 to 3).
 - **The table**: a mahogany table, a crimson velvet rack (10 per row, sliding up for a second row), gold face-down tiles for opponents, flying draw and play animations, and large suit symbols.
 - **Gestures**: drag anywhere. Long-press a rack tile to grab its run or group. Long-press a table set to move it. Double-tap to split a set. Tap a tile then tap a set to auto-place it. A Make space button and an invisible 27-space snap grid with automatic room-making.
+
+Computer players are picked at random from a roster of 6 robots (placeholder names and art for now, in `lib/app/bot_roster.dart` and `assets/bots/`). They decide a turn instantly and then play it out one action at a time: 2 s per new set, 1 s per split or set move, and 0.5 s per single tile. They follow the turn timer like everyone else.
 
 All play, solo modes included, goes through the same rules engine (`lib/engine/`): the host's phone validates every move.
 
@@ -28,6 +32,10 @@ All play, solo modes included, goes through the same rules engine (`lib/engine/`
    - Tip: a starting hand of 20 (in house rules) shows the rack's second row right away.
 
    Test tools only apply to Practice and Pass-and-play, never to online games.
+
+| Home | Results | Pass-and-play |
+|---|---|---|
+| ![](docs/home.jpg) | ![](docs/results.jpg) | ![](docs/pass_and_play.jpg) |
 
 ## Install on Android
 
@@ -55,6 +63,7 @@ On the web build, `?demo=practice&seed=7` (or `?demo=hotseat`) jumps straight in
 - The host's phone runs the authoritative `GameHost`. Each guest receives only its own rack, plus the shared table and tile counts.
 - Matchmaking uses the free public **PeerJS broker** (`0.peerjs.com`), which only passes connection details. After that the phones talk directly over a WebRTC data channel, using Google's public STUN servers.
 - **Invite by message** skips the broker completely: the host copies an invite, the friend pastes it and sends back a reply.
+- **Not yet tested phone to phone.** The broker handshake was checked from the build machine, but WebRTC can't open a connection in that sandbox, so the first real test is on your phones.
 - Some strict networks (certain mobile carriers or workplace Wi-Fi) block direct connections. There is deliberately no relay (TURN) server, so test with your group early.
 
 ## Project layout

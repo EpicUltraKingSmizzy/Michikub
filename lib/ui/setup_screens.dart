@@ -151,7 +151,11 @@ class HotSeatSetupScreen extends StatefulWidget {
 
 class _HotSeatSetupScreenState extends State<HotSeatSetupScreen> {
   final prefs = AppPrefs.instance;
-  late final List<TextEditingController> names = [for (final n in prefs.hotSeatNames) TextEditingController(text: n)];
+  // Player 1 starts as the name saved in Options (still editable here).
+  late final List<TextEditingController> names = [
+    for (final (i, n) in prefs.hotSeatNames.indexed)
+      TextEditingController(text: i == 0 && prefs.name.trim().isNotEmpty ? prefs.name.trim() : n),
+  ];
   late HouseRules rules = prefs.rules;
 
   @override

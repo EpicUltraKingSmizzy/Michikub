@@ -765,6 +765,8 @@ class _GameScreenState extends State<GameScreen> {
                   if (_starterBanner != null && pv.result == null && s.coverFor == null) _starterBannerWidget(g, _starterBanner!),
                   if (s.status != null) _statusBanner(g, s.status!),
                   if (pv.result != null) Positioned.fill(child: ResultsOverlay(session: s, view: pv, onLeave: _leave)),
+                  // Pass-and-play: the drawn tiles are on show; the turn is over, so no input.
+                  if (s.revealTiles.isNotEmpty) const Positioned.fill(child: AbsorbPointer()),
                   if (s.coverFor != null) Positioned.fill(child: _cover(s.coverFor!)),
                 ],
               );
@@ -911,9 +913,7 @@ class _GameScreenState extends State<GameScreen> {
             child: RingButton(
               size: 46,
               onPressed: _myTurn ? _makeSpace : null,
-              child: Text('ADD\nROW',
-                  textAlign: TextAlign.center,
-                  style: MK.body(12.5, color: MK.goldLight, weight: FontWeight.w800).copyWith(height: 1.0)),
+              child: const Icon(Icons.unfold_more_double, color: MK.goldLight, size: 38),
             ),
           ),
           const SizedBox(height: 6),
@@ -1137,6 +1137,7 @@ class _GameScreenState extends State<GameScreen> {
 
     TileGlow glow(int t) {
       if (_flash.contains(t)) return TileGlow.flashRed;
+      if (s.revealTiles.contains(t)) return TileGlow.selected;
       if (_selected.contains(t)) return TileGlow.selected;
       if (_shine.contains(t)) return TileGlow.shine;
       if (invalid.contains(t)) return TileGlow.invalid;
@@ -1234,8 +1235,6 @@ class _GameScreenState extends State<GameScreen> {
               Text('Pass the phone to', style: MK.body(16, color: MK.gold)),
               const SizedBox(height: 6),
               Text(name, style: MK.title(34).copyWith(color: MK.goldLight)),
-              const SizedBox(height: 6),
-              Text('Everyone else, look away from the rack.', style: MK.body(13)),
               const SizedBox(height: 18),
               GoldButton('I\'m $name, start my turn', icon: Icons.play_arrow, onPressed: () {
                 s.dismissCover();

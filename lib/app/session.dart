@@ -16,6 +16,10 @@ abstract class GameSession extends ChangeNotifier {
   String? get coverFor => null;
   void dismissCover() {}
 
+  /// Pass-and-play: tiles just drawn by the player handing the phone on, shown highlighted in
+  /// their rack for a moment before the cover appears (empty otherwise). No input meanwhile.
+  Set<int> get revealTiles => const {};
+
   /// True when this phone can start the next round.
   bool get controlsRounds;
 
@@ -33,6 +37,11 @@ abstract class GameSession extends ChangeNotifier {
   void leave();
 }
 
+class PassPlayTuning {
+  /// How long a Pass-and-play player sees the tile(s) they drew before the cover.
+  static int drawRevealMs = 2500;
+}
+
 /// Practice (1 human + bots) and Pass-and-play (several humans, one phone).
 class LocalSession extends GameSession {
   final GameHost host;
@@ -43,6 +52,9 @@ class LocalSession extends GameSession {
   String _seat;
   String? _cover;
   PlayerView? _view;
+  Set<int> _reveal = const {};
+  Timer? _revealTimer;
+  int _seenDrawSeq = 0;
 
   LocalSession(this.host, {required this.hotSeat, bool testMenu = false})
       : _testMenu = testMenu,
@@ -50,6 +62,7 @@ class LocalSession extends GameSession {
     bots = BotDriver(host);
     _sub = host.changes.listen((_) => _refresh());
     host.startRound();
+    _seenDrawSeq = host.drawSeq;
     if (hotSeat) {
       _seat = host.currentPlayer.id;
       _cover = host.currentPlayer.name;
@@ -60,10 +73,25 @@ class LocalSession extends GameSession {
 
   void _refresh() {
     final cur = host.currentPlayer;
-    if (hotSeat && host.result == null && cur.kind == SeatKind.human && cur.id != _seat) {
-      _seat = cur.id;
-      _cover = cur.name;
+    if (hotSeat && host.result == null && cur.kind == SeatKind.human && cur.id != _seat && _revealTimer == null) {
+      // The player handing the phone on just drew (Draw or a timeout): show them the new
+      // tile(s) in their rack first, then the cover.
+      final drew = host.drawPlayer == _seat && host.drawSeq != _seenDrawSeq && _view != null;
+      final before = _view?.rack.toSet() ?? const <int>{};
+      final fresh = drew ? (host.racks[_seat] ?? const <int>[]).where((t) => !before.contains(t)).toSet() : const <int>{};
+      if (fresh.isNotEmpty && PassPlayTuning.drawRevealMs > 0) {
+        _reveal = fresh;
+        _revealTimer = Timer(Duration(milliseconds: PassPlayTuning.drawRevealMs), () {
+          _revealTimer = null;
+          _reveal = const {};
+          _refresh();
+        });
+      } else {
+        _seat = cur.id;
+        _cover = cur.name;
+      }
     }
+    _seenDrawSeq = host.drawSeq;
     _view = host.viewFor(_seat);
     notifyListeners();
   }
@@ -72,6 +100,8 @@ class LocalSession extends GameSession {
   PlayerView? get view => _view;
   @override
   String? get coverFor => _cover;
+  @override
+  Set<int> get revealTiles => _reveal;
   @override
   void dismissCover() {
     _cover = null;
@@ -91,7 +121,11 @@ class LocalSession extends GameSession {
 
   @override
   void nextRound() {
+    _revealTimer?.cancel();
+    _revealTimer = null;
+    _reveal = const {};
     host.startRound();
+    _seenDrawSeq = host.drawSeq;
     if (hotSeat) {
       _seat = host.currentPlayer.id;
       _cover = host.currentPlayer.name;
@@ -113,6 +147,7 @@ class LocalSession extends GameSession {
 
   @override
   void leave() {
+    _revealTimer?.cancel();
     _sub?.cancel();
     bots.dispose();
     host.dispose();

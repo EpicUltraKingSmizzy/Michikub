@@ -1,0 +1,41 @@
+name: michikub
+description: "Michikub: an ad-free, phone-to-phone tile game for 2 to 4 friends."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.9.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  shared_preferences: ^2.5.3
+  flutter_webrtc: ^1.6.3
+  web_socket_channel: ^3.0.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/jokers/
+    - assets/textures/
+  fonts:
+    - family: Rubik
+      fonts:
+        - asset: assets/fonts/Rubik.ttf
+    - family: Playfair
+      fonts:
+        - asset: assets/fonts/Playfair.ttf
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  image_path: "assets/icon/michikub_icon_1024.png"
+  adaptive_icon_background: "assets/icon/michikub_icon_android_background.png"
+  adaptive_icon_foreground: "assets/icon/michikub_icon_android_foreground.png"

@@ -1,0 +1,422 @@
+import 'dart:math' as math;
+
+import 'meld.dart';
+
+/// Tunable layout constants.
+class LayoutTuning {
+  /// Spaces per board row, gaps included.
+  static const int rowWidth = 27;
+
+  /// Rows a fresh board starts with.
+  static const int startRows = 6;
+
+  /// A set that must move stays in its row if it moves this far or less.
+  static const int stayInRowMax = 3;
+}
+
+/// A run of adjacent tiles in one row: one set on the table.
+class Block {
+  final int row;
+  final int start;
+  final List<int> tiles;
+  const Block(this.row, this.start, this.tiles);
+  int get end => start + tiles.length; // exclusive
+  int get length => tiles.length;
+  Block at(int row, int start) => Block(row, start, tiles);
+  @override
+  String toString() => 'Block(r$row c$start ${tiles.length})';
+}
+
+/// The shared table: an invisible grid of rows, [LayoutTuning.rowWidth]
+/// spaces wide. -1 marks an empty space. Tiles that touch belong to the same
+/// set, so sets are always separated by at least one empty space.
+class Board {
+  final List<List<int>> rows;
+  Board(this.rows);
+
+  factory Board.empty([int rows = LayoutTuning.startRows]) =>
+      Board([for (var i = 0; i < rows; i++) List<int>.filled(LayoutTuning.rowWidth, -1)]);
+
+  static int get width => LayoutTuning.rowWidth;
+
+  Board copy() => Board([for (final r in rows) List<int>.of(r)]);
+
+  int get rowCount => rows.length;
+
+  void addRow({int? at}) {
+    final r = List<int>.filled(width, -1);
+    if (at == null) {
+      rows.add(r);
+    } else {
+      rows.insert(at, r);
+    }
+  }
+
+  void ensureRows(int n) {
+    while (rows.length < n) {
+      addRow();
+    }
+  }
+
+  bool isEmptyRow(int r) => rows[r].every((t) => t < 0);
+
+  List<Block> blocksInRow(int r) {
+    final out = <Block>[];
+    final row = rows[r];
+    var c = 0;
+    while (c < width) {
+      if (row[c] < 0) {
+        c++;
+        continue;
+      }
+      final s = c;
+      final ts = <int>[];
+      while (c < width && row[c] >= 0) {
+        ts.add(row[c]);
+        c++;
+      }
+      out.add(Block(r, s, ts));
+    }
+    return out;
+  }
+
+  List<Block> get blocks => [for (var r = 0; r < rows.length; r++) ...blocksInRow(r)];
+
+  List<int> get allTiles => [for (final r in rows) ...r.where((t) => t >= 0)];
+
+  ({int row, int col})? find(int tile) {
+    for (var r = 0; r < rows.length; r++) {
+      final c = rows[r].indexOf(tile);
+      if (c >= 0) return (row: r, col: c);
+    }
+    return null;
+  }
+
+  Block? blockOf(int tile) {
+    final p = find(tile);
+    if (p == null) return null;
+    return blocksInRow(p.row).firstWhere((b) => p.col >= b.start && p.col < b.end);
+  }
+
+  bool get isValid => blocks.every((b) => isValidMeld(b.tiles));
+
+  List<Block> get invalidBlocks => blocks.where((b) => !isValidMeld(b.tiles)).toList();
+
+  void removeTiles(Iterable<int> tiles) {
+    final s = tiles.toSet();
+    for (final r in rows) {
+      for (var c = 0; c < r.length; c++) {
+        if (s.contains(r[c])) r[c] = -1;
+      }
+    }
+  }
+
+  void writeBlock(Block b) {
+    ensureRows(b.row + 1);
+    for (var i = 0; i < b.length; i++) {
+      rows[b.row][b.start + i] = b.tiles[i];
+    }
+  }
+
+  void clearBlock(Block b) {
+    for (var i = 0; i < b.length; i++) {
+      rows[b.row][b.start + i] = -1;
+    }
+  }
+
+  /// True when [len] tiles fit at [start] in [row] with an empty space (or
+  /// the edge) on both sides.
+  bool fits(int row, int start, int len) {
+    if (row < 0 || row >= rows.length) return false;
+    if (start < 0 || start + len > width) return false;
+    for (var c = math.max(0, start - 1); c < math.min(width, start + len + 1); c++) {
+      if (rows[row][c] >= 0) return false;
+    }
+    return true;
+  }
+
+  /// Nearest start column in [row] where [len] tiles fit, or null.
+  int? nearestFit(int row, int len, int prefer) {
+    int? best;
+    for (var s = 0; s + len <= width; s++) {
+      if (fits(row, s, len) && (best == null || (s - prefer).abs() < (best - prefer).abs())) best = s;
+    }
+    return best;
+  }
+
+  /// Rows that hold at least one tile, top to bottom.
+  List<int> get usedRows => [for (var r = 0; r < rows.length; r++) if (!isEmptyRow(r)) r];
+
+  /// Drops trailing empty rows beyond the starting row count.
+  void trim() {
+    while (rows.length > LayoutTuning.startRows && isEmptyRow(rows.length - 1)) {
+      rows.removeLast();
+    }
+  }
+
+  List<List<int>> toJson() => [for (final r in rows) List<int>.of(r)];
+  factory Board.fromJson(List<dynamic> j) =>
+      Board([for (final r in j) [for (final t in (r as List)) t as int]]);
+
+  /// The sets as tile lists, ignoring where they sit.
+  List<List<int>> get sets => [for (final b in blocks) b.tiles];
+
+  @override
+  String toString() => rows
+      .map((r) => r.map((t) => t < 0 ? '.' : '#').join())
+      .join('\n');
+}
+
+/// Board layout operations. All return a new board; the input is untouched.
+class Layout {
+  /// Puts [tiles] (in order) at [row], [col], applying the table's layout
+  /// rules:
+  ///  * dropping onto a set inserts the tiles into it at that point;
+  ///  * dropping right beside a set joins it when the result could still
+  ///    become a valid set, otherwise that set is pushed 1 space aside;
+  ///  * sets keep at least 1 empty space between them;
+  ///  * an over-full row moves sets out (the smaller neighbour first);
+  ///  * a set pushed more than 3 spaces prefers a free spot directly above
+  ///    or below;
+  ///  * a move is never refused: if no row has room, a row is added.
+  static Board place(Board board, List<int> tiles, int row, int col, {bool merge = true}) {
+    final b = board.copy();
+    b.removeTiles(tiles);
+    if (tiles.isEmpty) return b;
+    row = math.max(0, row);
+    b.ensureRows(row + 1);
+    final w = Board.width;
+    final len = tiles.length;
+    col = col.clamp(0, w - len);
+
+    final others = b.blocksInRow(row);
+    Block anchor;
+    final hit = merge ? _firstOrNull(others, (x) => col >= x.start && col < x.end) : null;
+    if (hit != null) {
+      final i = col - hit.start;
+      anchor = Block(row, hit.start, [...hit.tiles.sublist(0, i), ...tiles, ...hit.tiles.sublist(i)]);
+      others.remove(hit);
+    } else {
+      anchor = Block(row, col, tiles);
+      if (merge) {
+        final left = _firstOrNull(others, (x) => x.end == col);
+        final right = _firstOrNull(others, (x) => x.start > col && x.start <= col + len);
+        if (left != null && right != null && isCompatible([...left.tiles, ...tiles, ...right.tiles])) {
+          anchor = Block(row, left.start, [...left.tiles, ...tiles, ...right.tiles]);
+          others..remove(left)..remove(right);
+        } else if (left != null && isCompatible([...left.tiles, ...tiles])) {
+          anchor = Block(row, left.start, [...left.tiles, ...tiles]);
+          others.remove(left);
+        } else if (right != null && isCompatible([...tiles, ...right.tiles])) {
+          anchor = Block(row, col, [...tiles, ...right.tiles]);
+          others.remove(right);
+        }
+      }
+    }
+    _resolveRow(b, row, others, anchor);
+    return b;
+  }
+
+  /// Inserts [tiles] into the set holding [setTile], before index [index]
+  /// (0 = front, set length = end). The set grows from where it sits and
+  /// slides left if it would pass the right edge.
+  static Board insertInto(Board board, List<int> tiles, int setTile, int index) {
+    final b = board.copy()..removeTiles(tiles);
+    final blk = b.blockOf(setTile);
+    if (blk == null) return b;
+    index = index.clamp(0, blk.length);
+    final combined = [...blk.tiles.sublist(0, index), ...tiles, ...blk.tiles.sublist(index)];
+    final start = index == 0 ? blk.start - tiles.length : blk.start;
+    b.clearBlock(blk);
+    final others = b.blocksInRow(blk.row);
+    final col = start.clamp(0, Board.width - combined.length);
+    _resolveRow(b, blk.row, others, Block(blk.row, col, combined));
+    return b;
+  }
+
+  /// Splits the set just before [tile]; the right part moves 1 space away.
+  static Board split(Board board, int tile) {
+    final blk = board.blockOf(tile);
+    if (blk == null) return board.copy();
+    final i = blk.tiles.indexOf(tile);
+    if (i <= 0) return board.copy();
+    final right = blk.tiles.sublist(i);
+    return place(board, right, blk.row, blk.start + i + 1, merge: false);
+  }
+
+  /// Moves a whole set (as given) so its first tile lands at [row], [col].
+  static Board moveSet(Board board, List<int> tiles, int row, int col) =>
+      place(board, tiles, row, col);
+
+  /// The Make space button. Shifts the top half of the tile rows (rounded up)
+  /// one row up, opening an empty row. Returns null (does nothing) when an
+  /// empty row already exists between tile rows. If the top tile row is
+  /// already at the top edge, a row is added (the table zooms out).
+  static Board? makeSpace(Board board) {
+    final used = board.usedRows;
+    if (used.isEmpty) return null;
+    for (var r = used.first; r <= used.last; r++) {
+      if (board.isEmptyRow(r)) return null;
+    }
+    final b = board.copy();
+    final half = (used.length + 1) ~/ 2;
+    final lastMoved = used[half - 1];
+    if (used.first == 0) {
+      // Insert a blank row below the moved half: same as shifting it up
+      // with the board growing by one row at the top.
+      b.addRow(at: lastMoved + 1);
+    } else {
+      // Remove one empty row above the tiles and insert it below the half.
+      b.rows.removeAt(used.first - 1);
+      b.addRow(at: lastMoved);
+    }
+    return b;
+  }
+
+  /// Where a new set of [len] tiles would go: the first row (top down) with
+  /// room, preferring a spot after the existing sets. Adds a row if needed.
+  static ({Board board, int row, int col}) findSpotForNewSet(Board board, int len) {
+    final b = board.copy();
+    for (var r = 0; r < b.rowCount; r++) {
+      final blocks = b.blocksInRow(r);
+      final after = blocks.isEmpty ? 0 : blocks.last.end + 1;
+      if (b.fits(r, after, len)) return (board: b, row: r, col: after);
+      final s = b.nearestFit(r, len, 0);
+      if (s != null) return (board: b, row: r, col: s);
+    }
+    b.addRow();
+    return (board: b, row: b.rowCount - 1, col: 0);
+  }
+
+  // ---------------------------------------------------------------------
+
+  static void _resolveRow(Board b, int row, List<Block> others, Block anchor) {
+    final w = Board.width;
+    final evicted = <Block>[];
+    var placedAnchor = anchor;
+    while (true) {
+      final left = others.where((x) => x.start < anchor.start).toList()..sort((a, c) => a.start - c.start);
+      final right = others.where((x) => x.start >= anchor.start).toList()..sort((a, c) => a.start - c.start);
+      final order = [...left, anchor, ...right];
+      final total = order.fold<int>(0, (s, x) => s + x.length) + order.length - 1;
+      if (total > w) {
+        // Evict the smaller immediate neighbour of the anchor (the right
+        // one on a tie); keep going until the row fits.
+        final ln = left.isEmpty ? null : left.last;
+        final rn = right.isEmpty ? null : right.first;
+        Block victim;
+        if (ln == null) {
+          victim = rn!;
+        } else if (rn == null) {
+          victim = ln;
+        } else {
+          victim = ln.length < rn.length ? ln : rn;
+        }
+        others.remove(victim);
+        evicted.add(victim);
+        continue;
+      }
+      final pos = _pack(order, left.length);
+      // A set pushed more than 3 spaces prefers a free spot directly above
+      // or below (checked against the board as it is now).
+      Block? far;
+      var farDist = LayoutTuning.stayInRowMax;
+      for (var i = 0; i < order.length; i++) {
+        if (identical(order[i], anchor)) continue;
+        final d = (pos[i] - order[i].start).abs();
+        if (d > farDist) {
+          far = order[i];
+          farDist = d;
+        }
+      }
+      if (far != null) {
+        final dest = _aboveOrBelow(b, row, far);
+        if (dest != null) {
+          b.clearBlock(far);
+          b.writeBlock(far.at(dest, far.start));
+          others.remove(far);
+          continue;
+        }
+      }
+      // Write the row.
+      for (var c = 0; c < w; c++) {
+        b.rows[row][c] = -1;
+      }
+      for (var i = 0; i < order.length; i++) {
+        final blk = order[i].at(row, pos[i]);
+        b.writeBlock(blk);
+        if (identical(order[i], anchor)) placedAnchor = blk;
+      }
+      break;
+    }
+    for (final e in evicted) {
+      _relocate(b, e, row);
+    }
+    assert(placedAnchor.row == row);
+  }
+
+  /// Places blocks in order with gaps of at least 1, keeping the anchor where
+  /// it was dropped when possible and moving others as little as possible.
+  static List<int> _pack(List<Block> order, int a) {
+    final w = Board.width;
+    final n = order.length;
+    final pos = [for (final x in order) x.start];
+    for (var i = a + 1; i < n; i++) {
+      pos[i] = math.max(pos[i], pos[i - 1] + order[i - 1].length + 1);
+    }
+    for (var i = a - 1; i >= 0; i--) {
+      pos[i] = math.min(pos[i], pos[i + 1] - order[i].length - 1);
+    }
+    final over = pos[n - 1] + order[n - 1].length - w;
+    if (over > 0) {
+      pos[n - 1] -= over;
+      for (var i = n - 2; i >= 0; i--) {
+        pos[i] = math.min(pos[i], pos[i + 1] - order[i].length - 1);
+      }
+    }
+    if (pos[0] < 0) {
+      pos[0] = 0;
+      for (var i = 1; i < n; i++) {
+        pos[i] = math.max(pos[i], pos[i - 1] + order[i - 1].length + 1);
+      }
+    }
+    return pos;
+  }
+
+  static int? _aboveOrBelow(Board b, int row, Block blk) {
+    for (final r in [row - 1, row + 1]) {
+      if (r >= 0 && r < b.rowCount && b.fits(r, blk.start, blk.length)) return r;
+    }
+    return null;
+  }
+
+  /// Finds a new home for a set pushed out of [fromRow]: directly above or
+  /// below first, then the nearest spot in the nearest row with room, else
+  /// a new row at the bottom.
+  static void _relocate(Board b, Block blk, int fromRow) {
+    final direct = _aboveOrBelow(b, fromRow, blk);
+    if (direct != null) {
+      b.writeBlock(blk.at(direct, blk.start));
+      return;
+    }
+    for (var d = 1; d < b.rowCount + 1; d++) {
+      for (final r in [fromRow - d, fromRow + d]) {
+        if (r < 0 || r >= b.rowCount) continue;
+        final s = b.nearestFit(r, blk.length, blk.start);
+        if (s != null) {
+          b.writeBlock(blk.at(r, s));
+          return;
+        }
+      }
+    }
+    b.addRow();
+    b.writeBlock(blk.at(b.rowCount - 1, blk.start.clamp(0, Board.width - blk.length)));
+  }
+
+  static T? _firstOrNull<T>(Iterable<T> xs, bool Function(T) f) {
+    for (final x in xs) {
+      if (f(x)) return x;
+    }
+    return null;
+  }
+}

@@ -397,7 +397,7 @@ class _GameScreenState extends State<GameScreen> {
       setState(() {});
       return;
     }
-    if (cell.row < working.rowCount && _tryReclaim(tiles, working.rows[cell.row][cell.col])) return;
+    if (cell.row < working.rowCount && _tryReclaim(tiles, working.rows[cell.row][cell.col], jokerOnly: true)) return;
     final why = _boardBlock(tiles);
     if (why != null) {
       _flashRed(tiles, why);
@@ -406,31 +406,44 @@ class _GameScreenState extends State<GameScreen> {
     _setWorking(_placeAt(tiles, cell.row, cell.col, cell.frac), moved: tiles);
   }
 
-  /// Joker reclaim shortcut: one rack tile dropped (or tapped) onto a table joker that it can
-  /// stand in for takes the joker's place, and the joker moves to a free spot on the table,
-  /// selected, for the player to place (tap a set or a spot, or drag it). The joker never goes
-  /// to the rack. The long way works too: move the joker, then put the tile into the gap.
-  bool _tryReclaim(List<int> tiles, int target) {
-    if (tiles.length != 1 || target < 0 || !isJoker(target) || !_myTurn) return false;
+  /// The joker swap shortcut (see Layout.jokerShortcut): one selected tile, from the rack or
+  /// the table, tapped onto a set that holds a joker (or dropped onto the joker) takes the
+  /// joker's place if it's a compatible replacement; the joker moves to the set's end or edge,
+  /// or is set down alone nearby, selected, for the player to place. Returns true when handled.
+  bool _tryReclaim(List<int> tiles, int target, {bool jokerOnly = false}) {
+    if (tiles.length != 1 || target < 0 || !_myTurn) return false;
     final t = tiles.first;
-    if (isJoker(t) || _onBoard(t) || working.find(target) == null) return false;
-    final swapped = Layout.swapJoker(working, t, target);
-    if (swapped == null) return false;
-    if (!_melded) {
-      _flashRed([t, target], 'Make your first meld before moving table tiles.');
+    if (isJoker(t) || (jokerOnly && !isJoker(target))) return false;
+    final blk = working.blockOf(target);
+    if (blk == null || blk.tiles.contains(t)) return false;
+    final ti = blk.tiles.indexOf(target);
+    final jokers = blk.tiles.where(isJoker).toList()
+      ..sort((a, b) => (blk.tiles.indexOf(a) - ti).abs() - (blk.tiles.indexOf(b) - ti).abs());
+    for (final j in jokers) {
+      final res = Layout.jokerShortcut(working, t, j);
+      if (res == null) continue;
+      if (!_melded) {
+        _flashRed([t, j], 'Make your first meld before changing sets on the table.');
+        return true;
+      }
+      final why = _boardBlock([t]);
+      if (why != null) {
+        _flashRed([t], why);
+        return true;
+      }
+      if (!_setWorking(res.board, moved: [t])) return true;
+      if (res.detached) {
+        setState(() {
+          _selected
+            ..clear()
+            ..add(j);
+          _groupSel = false;
+        });
+        _showToast('Joker set aside: tap a set or a spot to place it.');
+      }
       return true;
     }
-    final spot = Layout.findSpotForNewSet(swapped, 1);
-    final b = Layout.place(spot.board, [target], spot.row, spot.col, merge: false);
-    if (!_setWorking(b, moved: [t])) return true;
-    setState(() {
-      _selected
-        ..clear()
-        ..add(target);
-      _groupSel = false;
-    });
-    _showToast('Now place the joker: tap a set or a free spot.');
-    return true;
+    return false;
   }
 
   Board _placeAt(List<int> tiles, int row, int col, double frac) {

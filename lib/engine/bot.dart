@@ -71,6 +71,11 @@ enum BotStepType {
 
   /// A tile taken out of a set on the board and set down alone.
   removeTile,
+
+  /// The joker swap shortcut: a rack tile played onto a set that holds a joker, taking the
+  /// joker's place; the joker shifts to the set's end or edge (or is set down alone nearby).
+  /// One attach, so 1 move.
+  jokerSwap,
 }
 
 /// One MOVE: a single visible action on the table. Every step counts as exactly 1 move.
@@ -106,12 +111,14 @@ class BotStep {
     : this._(BotStepType.moveSet, tile: setTile, targetSetTile: toSetTile, atEnd: atEnd);
   const BotStep.split(int beforeTile) : this._(BotStepType.split, tile: beforeTile);
   const BotStep.removeTile(int tile) : this._(BotStepType.removeTile, tile: tile);
+  const BotStep.jokerSwap(int tile, int joker) : this._(BotStepType.jokerSwap, tile: tile, targetSetTile: joker);
 
   bool get isNewSet => type == BotStepType.newSet;
   bool get isExtension => type == BotStepType.extend;
 
   /// True when the step brings tiles from the rack (rather than moving table tiles).
-  bool get fromRack => type == BotStepType.newSet || type == BotStepType.extend || type == BotStepType.tileAt;
+  bool get fromRack =>
+      type == BotStepType.newSet || type == BotStepType.extend || type == BotStepType.tileAt || type == BotStepType.jokerSwap;
 
   /// Every step is one move.
   int get moveCount => 1;
@@ -119,7 +126,7 @@ class BotStep {
   /// Rack tiles this step puts on the board.
   int get tileCount => switch (type) {
     BotStepType.newSet => tiles.length,
-    BotStepType.extend || BotStepType.tileAt => 1,
+    BotStepType.extend || BotStepType.tileAt || BotStepType.jokerSwap => 1,
     _ => 0,
   };
 
@@ -140,10 +147,11 @@ class BotPlay {
   int get tileCount => steps.fold(0, (s, x) => s + x.tileCount);
   int get moveCount => steps.length;
 
-  /// Table jokers this play moves (joker reclaims).
+  /// Table jokers this play moves (joker reclaims and swaps).
   Set<int> get reclaimedJokers => {
     for (final s in steps)
-      if (s.type == BotStepType.moveTile && isJoker(s.tile!)) s.tile!,
+      if (s.type == BotStepType.moveTile && isJoker(s.tile!)) s.tile!
+      else if (s.type == BotStepType.jokerSwap) s.targetSetTile!,
   };
 
   /// Rack tiles used, for telling plays apart.
@@ -370,6 +378,39 @@ List<BotPlay> findPlays(Board board, List<int> rack, {bool rackOnly = false}) {
       }
     }
   }
+  // The joker swap shortcut (1 move); if the joker ends up alone, place it too.
+  for (final blk in blocks) {
+    for (final j in blk.tiles.where(isJoker)) {
+      for (final t in real) {
+        final res = Layout.jokerShortcut(board, t, j);
+        if (res == null) continue;
+        final swap = BotStep.jokerSwap(t, j);
+        if (!res.detached) {
+          out.add(BotPlay([swap]));
+          continue;
+        }
+        for (final tb in res.board.blocks.where((b) => isValidMeld(b.tiles) && !b.tiles.contains(j))) {
+          if (isValidMeld([...tb.tiles, j])) {
+            out.add(BotPlay([swap, BotStep.moveTile(j, toSetTile: tb.tiles.first, index: tb.length)]));
+          } else if (isValidMeld([j, ...tb.tiles])) {
+            out.add(BotPlay([swap, BotStep.moveTile(j, toSetTile: tb.tiles.first, index: 0)]));
+          }
+        }
+        final rest = [...realAll]..remove(t);
+        for (var x = 0; x < rest.length; x++) {
+          for (var y = x + 1; y < rest.length; y++) {
+            final pair = [rest[x], rest[y]]..sort((p, q) => runSortKey(p) - runSortKey(q));
+            if (!isCompatible(pair)) continue;
+            for (var at = 0; at <= 2; at++) {
+              if (!isValidMeld([...pair]..insert(at, j))) continue;
+              out.add(BotPlay([swap, BotStep.newSet(pair), BotStep.moveTile(j, toSetTile: pair.first, index: at)]));
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
   // Keep only plays that really end valid (and use each rack tile once).
   return out.where((p) {
     final tiles = <int>[
@@ -503,6 +544,8 @@ Board applyBotStep(Board board, BotStep step) {
       return Layout.split(board, step.tile!);
     case BotStepType.removeTile:
       return _alone(board, [step.tile!]);
+    case BotStepType.jokerSwap:
+      return Layout.jokerShortcut(board, step.tile!, step.targetSetTile!)?.board ?? board;
   }
 }
 

@@ -136,14 +136,18 @@ void main() {
       expect(end.blockOf(j)!.tiles.toSet(), {b(3), b(4), j});
     });
 
-    test('(b) with a spare table set the joker can join instead: 2 moves', () {
+    test('(b) with the swap shortcut: 1 move (9 in, J to the end); the 2-move honest route also exists', () {
       final bd = boardWith([
         (0, 0, [r(7), r(8), j, r(10)]),
         (2, 0, [k(1), k(2), k(3)]),
       ]);
       final p = bestReclaim(bd, [r(9)], j);
-      expect(p.moveCount, 2);
-      final end = applyBotPlay(bd, p);
+      expect(p.moveCount, 1);
+      expect(p.steps.single.type, BotStepType.jokerSwap);
+      expect(applyBotPlay(bd, p).blockOf(r(7))!.tiles, [r(7), r(8), r(9), r(10), j]);
+      final honest = findPlays(bd, [r(9)]).where((x) => x.moveCount == 2 && x.reclaimedJokers.contains(j)).toList();
+      expect(honest, isNotEmpty);
+      final end = applyBotPlay(bd, honest.first);
       expect(end.blockOf(r(7))!.tiles, [r(7), r(8), r(9), r(10)]);
       expect(end.blockOf(j)!.tiles, [k(1), k(2), k(3), j]);
     });

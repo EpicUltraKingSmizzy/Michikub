@@ -210,7 +210,11 @@ class MkScaffold extends StatelessWidget {
   final Widget body;
   final List<Widget> actions;
   final bool showBack;
-  const MkScaffold({super.key, required this.title, required this.body, this.actions = const [], this.showBack = true});
+
+  /// Long-press on the title (e.g. "Room ABCD" copies the code).
+  final VoidCallback? onTitleLongPress;
+  const MkScaffold(
+      {super.key, required this.title, required this.body, this.actions = const [], this.showBack = true, this.onTitleLongPress});
   @override
   Widget build(BuildContext context) => Scaffold(
         body: WoodBackground(
@@ -225,7 +229,10 @@ class MkScaffold extends StatelessWidget {
                         icon: const Icon(Icons.arrow_back_ios_new, color: MK.goldLight, size: 20),
                         onPressed: () => Navigator.of(context).maybePop(),
                       ),
-                    Text(title, style: MK.title(22)),
+                    if (onTitleLongPress == null)
+                      Text(title, style: MK.title(22))
+                    else
+                      GestureDetector(onLongPress: onTitleLongPress, child: Text(title, style: MK.title(22))),
                     const Spacer(),
                     ...actions,
                   ]),

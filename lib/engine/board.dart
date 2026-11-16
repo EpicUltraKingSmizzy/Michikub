@@ -103,13 +103,35 @@ class Board {
 
   List<Block> get invalidBlocks => blocks.where((b) => !isValidMeld(b.tiles)).toList();
 
+  /// Takes [tiles] off the board. A group (same number, different colours) that loses tiles
+  /// closes up, anchored at its left-most cell: taking the middle 7 of 7-7-7-7 leaves 7-7-7,
+  /// not 7-7 _ 7. Runs are left as they are (a gap in a run is a split).
   void removeTiles(Iterable<int> tiles) {
     final s = tiles.toSet();
+    final closing = [
+      for (final blk in blocks)
+        if (blk.tiles.any(s.contains) && !blk.tiles.every(s.contains) && isGroupLike(blk.tiles)) blk,
+    ];
     for (final r in rows) {
       for (var c = 0; c < r.length; c++) {
         if (s.contains(r[c])) r[c] = -1;
       }
     }
+    for (final g in closing) {
+      final rest = g.tiles.where((t) => !s.contains(t)).toList();
+      for (var c = g.start; c < g.end; c++) {
+        rows[g.row][c] = -1;
+      }
+      for (var i = 0; i < rest.length; i++) {
+        rows[g.row][g.start + i] = rest[i];
+      }
+    }
+  }
+
+  /// A group or partial group: at least two numbered tiles, all with the same number.
+  static bool isGroupLike(List<int> tiles) {
+    final real = tiles.where((t) => !isJoker(t)).toList();
+    return real.length >= 2 && real.every((t) => tileNumber(t) == tileNumber(real.first));
   }
 
   void writeBlock(Block b) {
@@ -261,6 +283,64 @@ class Layout {
     if (atEnd) return set.length;
     if (atStart) return 0;
     return null;
+  }
+
+  /// The joker swap shortcut: [tile] (from the rack, or from elsewhere on the board) is played
+  /// onto the set holding [joker], taking the joker's place if it's a compatible replacement:
+  ///  * a run: the tile takes the joker's position and the joker moves to an end (the high end
+  ///    if both work); if neither end works (the run would span past 1-13), the joker is
+  ///    detached to the nearest empty space;
+  ///  * a group of fewer than 4: the tile is added and the joker sits at the group's edge;
+  ///  * a group of 4: the tile takes the joker's spot and the joker is detached to the nearest
+  ///    empty space.
+  /// Returns null when the tile can't replace the joker. `detached` is true when the joker was
+  /// set down alone (the player then places it).
+  static ({Board board, bool detached})? jokerShortcut(Board board, int tile, int joker) {
+    if (!isJoker(joker) || isJoker(tile) || tile == joker) return null;
+    final before = board.blockOf(joker);
+    if (before == null || before.tiles.contains(tile)) return null;
+    final info = analyzeMeld(before.tiles);
+    if (info == null) return null;
+    final b = board.copy()..removeTiles([tile]);
+    final blk = b.blockOf(joker)!;
+    final swapped = [for (final t in blk.tiles) t == joker ? tile : t];
+    if (!isValidMeld(swapped)) return null;
+    final p = b.find(joker)!;
+    b.rows[p.row][p.col] = tile; // the tile takes the joker's cell; the joker is in hand for a moment
+    final isRun = info.kind == MeldKind.run;
+    if (isRun || blk.length < 4) {
+      // Runs: the high end first. Groups of fewer than 4: the joker goes to the edge.
+      if (isValidMeld([...swapped, joker])) return (board: insertInto(b, [joker], tile, swapped.length), detached: false);
+      if (isRun && isValidMeld([joker, ...swapped])) return (board: insertInto(b, [joker], tile, 0), detached: false);
+    }
+    return (board: placeNear(b, joker, p.row, p.col), detached: true);
+  }
+
+  /// Sets [tile] down alone in the empty cell nearest ([row], [col]) that doesn't touch another
+  /// set (so it stays a separate set).
+  static Board placeNear(Board board, int tile, int row, int col) {
+    final b = board.copy()..removeTiles([tile]);
+    ({int r, int c})? best;
+    var bestScore = double.infinity;
+    for (var r = 0; r < b.rowCount; r++) {
+      for (var c = 0; c < Board.width; c++) {
+        if (b.rows[r][c] >= 0) continue;
+        if (c > 0 && b.rows[r][c - 1] >= 0) continue;
+        if (c < Board.width - 1 && b.rows[r][c + 1] >= 0) continue;
+        final dr = (r - row) * 1.4, dc = (c - col).toDouble();
+        final score = dr * dr + dc * dc;
+        if (score < bestScore) {
+          bestScore = score;
+          best = (r: r, c: c);
+        }
+      }
+    }
+    if (best == null) {
+      final spot = findSpotForNewSet(b, 1);
+      return place(spot.board, [tile], spot.row, spot.col, merge: false);
+    }
+    b.rows[best.r][best.c] = tile;
+    return b;
   }
 
   /// Joker reclaim: puts [tile] exactly where [joker] sits (same set, same cell) and takes

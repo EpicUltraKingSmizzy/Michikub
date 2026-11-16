@@ -254,20 +254,14 @@ void main() {
       await tearDownTable(tester);
     });
 
-    testWidgets('joker shortcut: the joker stays on the table, selected, then goes where you tap', (tester) async {
+    testWidgets('joker shortcut: the joker never goes to the rack', (tester) async {
       final bd = boardWith([
         (0, 2, [r(4), j, r(6)]),
       ]);
       await setUpTable(tester, bd, [r(5), k(13)]);
       await drag(tester, at(tester, r(5)), at(tester, j));
-      expect(table().blockOf(r(4))?.tiles, [r(4), r(5), r(6)]);
-      final parked = table().find(j);
-      expect(parked, isNotNull, reason: 'the joker never goes to the rack');
-      // Selected: tapping an empty spot moves it there.
-      await tester.tapAt(emptyBoard);
-      await tester.pump(const Duration(milliseconds: 400));
-      expect(table().find(j), isNotNull);
-      expect(table().find(j) == parked, false);
+      expect(table().blockOf(r(4))?.tiles, [r(4), r(5), r(6), j]);
+      expect(host.racks[me], isNot(contains(j)));
       await tearDownTable(tester);
     });
 

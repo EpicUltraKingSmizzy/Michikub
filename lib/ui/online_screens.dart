@@ -14,6 +14,28 @@ import 'rules_editor.dart';
 import 'setup_screens.dart';
 import 'theme.dart';
 
+/// Long-press on a room code: copies just the code, with a light haptic and a short note.
+void copyRoomCode(BuildContext context, String code) {
+  Clipboard.setData(ClipboardData(text: code));
+  if (AppPrefs.instance.haptics) HapticFeedback.lightImpact();
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(const SnackBar(content: Text('Code copied'), duration: Duration(milliseconds: 1500)));
+}
+
+/// A room code as shown in a lobby; long-press copies it.
+class RoomCode extends StatelessWidget {
+  final String code;
+  final TextStyle? style;
+  const RoomCode(this.code, {super.key, this.style});
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onLongPress: code.isEmpty ? null : () => copyRoomCode(context, code),
+        child: Text(code, style: style),
+      );
+}
+
 class HostLobbyScreen extends StatefulWidget {
   const HostLobbyScreen({super.key});
   @override
@@ -129,9 +151,9 @@ class _HostLobbyScreenState extends State<HostLobbyScreen> {
                 else if (net.error != null && net.code.isEmpty || net.error != null && net.seats.length == 1 && net.opening)
                   Text('—', style: MK.title(30))
                 else
-                  SelectableText(net.code, style: MK.title(40).copyWith(color: MK.goldLight, letterSpacing: 6)),
+                  RoomCode(net.code, style: MK.title(40).copyWith(color: MK.goldLight, letterSpacing: 6)),
                 if (net.error != null) Text(net.error!, style: MK.body(12, color: MK.danger)),
-                Text('Tap Share to send friends a link that opens Michikub straight to this room, or they can tap Join a game and type the code. Only connection details pass through the free matchmaking service.',
+                Text('Tap Share to send friends a link that opens Michikub straight to this room, or they can tap Join a game and type the code (long-press it to copy). Only connection details pass through the free matchmaking service.',
                     style: MK.body(11, color: MK.gold)),
               ]),
             ),
@@ -349,6 +371,7 @@ class _GuestLobbyScreenState extends State<GuestLobbyScreen> {
   Widget build(BuildContext context) {
     return MkScaffold(
       title: g.code.isEmpty ? 'Joining by invite' : 'Room ${g.code}',
+      onTitleLongPress: g.code.isEmpty ? null : () => copyRoomCode(context, g.code),
       body: ListView(padding: const EdgeInsets.fromLTRB(20, 4, 20, 20), children: [
         MkPanel(
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [

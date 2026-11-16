@@ -49,6 +49,15 @@ class MK {
         letterSpacing: 0.5,
       );
 
+  /// Room codes: Space Grotesk Bold, gold, spaced out.
+  static TextStyle code(double size, {double letterSpacing = 4, Color color = goldLight}) => TextStyle(
+        fontFamily: 'SpaceGrotesk',
+        fontWeight: FontWeight.w700,
+        fontSize: size,
+        color: color,
+        letterSpacing: letterSpacing,
+      );
+
   static TextStyle body(double size, {Color color = creamText, FontWeight weight = FontWeight.w500}) =>
       TextStyle(fontFamily: 'Rubik', fontSize: size, color: color, fontWeight: weight);
 
@@ -213,8 +222,11 @@ class MkScaffold extends StatelessWidget {
 
   /// Long-press on the title (e.g. "Room ABCD" copies the code).
   final VoidCallback? onTitleLongPress;
+
+  /// Shown instead of the plain [title] text (e.g. a title with the room code in its font).
+  final Widget? titleWidget;
   const MkScaffold(
-      {super.key, required this.title, required this.body, this.actions = const [], this.showBack = true, this.onTitleLongPress});
+      {super.key, required this.title, required this.body, this.actions = const [], this.showBack = true, this.onTitleLongPress, this.titleWidget});
   @override
   Widget build(BuildContext context) => Scaffold(
         body: WoodBackground(
@@ -230,9 +242,9 @@ class MkScaffold extends StatelessWidget {
                         onPressed: () => Navigator.of(context).maybePop(),
                       ),
                     if (onTitleLongPress == null)
-                      Text(title, style: MK.title(22))
+                      titleWidget ?? Text(title, style: MK.title(22))
                     else
-                      GestureDetector(onLongPress: onTitleLongPress, child: Text(title, style: MK.title(22))),
+                      GestureDetector(onLongPress: onTitleLongPress, child: titleWidget ?? Text(title, style: MK.title(22))),
                     const Spacer(),
                     ...actions,
                   ]),

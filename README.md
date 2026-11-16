@@ -75,3 +75,8 @@ lib/app/      saved preferences, local sessions (practice / pass-and-play)
 lib/ui/       screens and the game table
 test/         engine tests
 ```
+
+## Credits
+
+- **Space Grotesk Bold** (room codes), by Florian Karsten and the Space Grotesk Project Authors. It's from https://github.com/floriankarsten/space-grotesk and licensed under the SIL Open Font License 1.1. The licence text ships in `assets/fonts/SpaceGrotesk-OFL.txt` and is shown in the app under Options > Open-source licences.
+- **Rubik** (body text) and **Playfair** (titles) are bundled in `assets/fonts/`.

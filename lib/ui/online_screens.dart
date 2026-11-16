@@ -170,7 +170,7 @@ class _HostLobbyScreenState extends State<HostLobbyScreen> {
                 else if (net.error != null && net.code.isEmpty || net.error != null && net.seats.length == 1 && net.opening)
                   Text('—', style: MK.title(30))
                 else
-                  RoomCode(net.code, style: MK.title(40).copyWith(color: MK.goldLight, letterSpacing: 6)),
+                  RoomCode(net.code, style: MK.code(36, letterSpacing: 6)),
                 if (net.error != null) Text(net.error!, style: MK.body(12, color: MK.danger)),
                 Text('Tap Share to send friends a link that opens Michikub straight to this room, or they can tap Join a game and type the code (long-press it to copy). Only connection details pass through the free matchmaking service.',
                     style: MK.body(11, color: MK.gold)),
@@ -322,7 +322,7 @@ class _JoinScreenState extends State<JoinScreen> {
                       return c == null ? nu : TextEditingValue(text: c, selection: TextSelection.collapsed(offset: c.length));
                     }),
                   ],
-                  style: MK.title(22).copyWith(letterSpacing: 4),
+                  style: MK.code(22, letterSpacing: 4),
                   decoration: const InputDecoration(labelText: 'Room code', counterText: ''),
                   onSubmitted: (_) => _joinCode(),
                 ),
@@ -392,6 +392,12 @@ class _GuestLobbyScreenState extends State<GuestLobbyScreen> {
     return MkScaffold(
       title: g.code.isEmpty ? 'Joining by invite' : 'Room ${g.code}',
       onTitleLongPress: g.code.isEmpty ? null : () => copyRoomCode(context, g.code),
+      titleWidget: g.code.isEmpty
+          ? null
+          : Text.rich(TextSpan(children: [
+              TextSpan(text: 'Room ', style: MK.title(22)),
+              TextSpan(text: g.code, style: MK.code(20, letterSpacing: 3)),
+            ])),
       body: ListView(padding: const EdgeInsets.fromLTRB(20, 4, 20, 20), children: [
         MkPanel(
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [

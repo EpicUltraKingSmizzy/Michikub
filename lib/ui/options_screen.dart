@@ -140,6 +140,15 @@ class _OptionsScreenState extends State<OptionsScreen> {
               ],
             ]),
           ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => showLicensePage(context: context, applicationName: 'Michikub'),
+              icon: const Icon(Icons.description_outlined, size: 18),
+              label: const Text('Open-source licences'),
+            ),
+          ),
         ]),
       ),
     );

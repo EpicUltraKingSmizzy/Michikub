@@ -20,11 +20,19 @@ Future<void> main() async {
   await SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   await AppPrefs.instance.load();
+  registerFontLicenses();
   runApp(const MichikubApp());
 }
 
 /// For opening screens from outside a widget (deep links).
 final appNavigator = GlobalKey<NavigatorState>();
+
+/// Bundled font licences, shown on the Options > Open-source licences page.
+void registerFontLicenses() {
+  LicenseRegistry.addLicense(() async* {
+    yield LicenseEntryWithLineBreaks(['Space Grotesk'], await rootBundle.loadString('assets/fonts/SpaceGrotesk-OFL.txt'));
+  });
+}
 
 class MichikubApp extends StatelessWidget {
   const MichikubApp({super.key});

@@ -30,6 +30,7 @@ flutter:
     - assets/textures/
     - assets/bots/
     - assets/icon/michikub_icon_1024.png
+    - assets/fonts/SpaceGrotesk-OFL.txt
   fonts:
     - family: Rubik
       fonts:
@@ -37,6 +38,11 @@ flutter:
     - family: Playfair
       fonts:
         - asset: assets/fonts/Playfair.ttf
+    # Room codes (OFL 1.1, see assets/fonts/SpaceGrotesk-OFL.txt).
+    - family: SpaceGrotesk
+      fonts:
+        - asset: assets/fonts/SpaceGrotesk-Bold.ttf
+          weight: 700
 
 flutter_launcher_icons:
   android: true

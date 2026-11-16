@@ -63,7 +63,7 @@ Most numbers live in a small set of constants: `BotTuning` (lib/engine/bot.dart)
 ## E. Look, sound and wording
 
 45. **Sounds?** None in v0.1. Vibration (light taps on pick-up and drop) is on by default and can be switched off in Options. *Why:* sound needs real assets, and silent play suits game nights.
-46. **Avatars?** A coloured circle with the player's initial, and a robot icon for bots. *Why:* there's nothing to upload or store, and it matches the mockup.
+46. **Avatars?** A coloured circle with the player's initial for people. Bots use their roster robot's picture (placeholders for now, see #35). *Why:* there's nothing to upload or store, and it matches the mockup.
 47. **Default name?** "Player", changeable in Options or on the Join screen. *Why:* there's no sign-up.
 48. **What does the main button say?** "Draw" when you haven't played, "End turn" once you have, "Pass" when the pile is empty, and a greyed "Draw / End turn" on others' turns. *Why:* it always says exactly what will happen.
 49. **What does the Pass-and-play cover screen say?** "Pass the phone to *Name*" and "Everyone else, look away from the rack", with the button "I'm *Name*, start my turn". Your turn timer starts only when you tap the button. *Why:* nobody loses time while the phone changes hands.

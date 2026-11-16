@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../app/bot_roster.dart';
 import '../app/prefs.dart';
 import '../app/session.dart';
 import '../engine/board.dart';
@@ -11,6 +12,7 @@ import '../engine/host.dart';
 import '../engine/meld.dart';
 import '../engine/tiles.dart';
 import 'results.dart';
+import 'avatar.dart';
 import 'table_geo.dart';
 import 'theme.dart';
 import 'tiles_view.dart';
@@ -772,26 +774,39 @@ class _GameScreenState extends State<GameScreen> {
 
   Widget _avatar(SeatView sv, double size, {bool current = false}) {
     final idx = v!.seats.indexOf(sv);
-    final col = seatColors[idx % seatColors.length];
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: col,
-        border: Border.all(color: current ? MK.goldLight : MK.gold.withValues(alpha: .7), width: current ? 3 : 1.5),
-        boxShadow: [
-          if (current) const BoxShadow(color: Color(0xAAFFD36B), blurRadius: 14, spreadRadius: 2),
-          const BoxShadow(color: Colors.black54, blurRadius: 4, offset: Offset(0, 2)),
-        ],
+    final robot = robotByAvatar(sv.info.avatar);
+    return PlayerAvatar(
+      size: size,
+      name: sv.info.name,
+      image: sv.info.avatar,
+      color: seatColors[idx % seatColors.length],
+      current: current,
+      onLongPress: robot == null ? null : () => _showRobot(sv, robot),
+    );
+  }
+
+  void _showRobot(SeatView sv, RobotProfile robot) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: GestureDetector(
+          onTap: () => Navigator.pop(ctx),
+          child: MkPanel(
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              PlayerAvatar(size: 72, name: robot.name, image: robot.avatar),
+              const SizedBox(width: 14),
+              Flexible(
+                child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(sv.info.name, style: MK.title(20)),
+                  const SizedBox(height: 4),
+                  Text('"${robot.tagline}"', style: MK.body(14, color: MK.goldLight)),
+                ]),
+              ),
+            ]),
+          ),
+        ),
       ),
-      alignment: Alignment.center,
-      child: sv.info.avatar != null
-          ? ClipOval(child: Image.asset(sv.info.avatar!, width: size, height: size, fit: BoxFit.cover))
-          : sv.info.kind == SeatKind.bot
-          ? Icon(Icons.smart_toy_outlined, color: Colors.white, size: size * .55)
-          : Text(sv.info.name.isEmpty ? '?' : sv.info.name.characters.first.toUpperCase(),
-              style: MK.body(size * .45, color: Colors.white, weight: FontWeight.w700)),
     );
   }
 

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../app/bot_roster.dart';
 import '../app/prefs.dart';
 import '../engine/host.dart';
 import '../net/online.dart';
 import '../net/peer.dart';
+import 'avatar.dart';
 import 'game_screen.dart';
 import 'rules_editor.dart';
 import 'setup_screens.dart';
@@ -130,11 +132,16 @@ class _HostLobbyScreenState extends State<HostLobbyScreen> {
             for (final s in net.seats)
               ListTile(
                 dense: true,
-                leading: Icon(
-                    s.info.kind == SeatKind.bot ? Icons.smart_toy_outlined : (s.info.id == 'host' ? Icons.star : Icons.person),
-                    color: MK.goldLight),
+                leading: PlayerAvatar(
+                    size: 34,
+                    name: s.info.name,
+                    image: s.info.avatar,
+                    color: seatColors[net.seats.indexOf(s) % seatColors.length]),
                 title: Text(s.info.name + (s.info.id == 'host' ? ' (you, host)' : ''), style: MK.body(14)),
-                subtitle: s.info.kind == SeatKind.bot ? Text(levelName(s.info.level), style: MK.body(11, color: MK.gold)) : null,
+                subtitle: s.info.kind == SeatKind.bot
+                    ? Text([levelName(s.info.level), if (robotByAvatar(s.info.avatar) case final r?) r.tagline].join(' · '),
+                        maxLines: 1, overflow: TextOverflow.ellipsis, style: MK.body(11, color: MK.gold))
+                    : null,
                 trailing: s.info.id == 'host'
                     ? null
                     : IconButton(icon: const Icon(Icons.close, color: MK.gold), onPressed: () => net.removeSeat(s.info.id)),

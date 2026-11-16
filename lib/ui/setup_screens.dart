@@ -5,6 +5,7 @@ import '../app/prefs.dart';
 import '../app/session.dart';
 import '../engine/host.dart';
 import '../engine/rules.dart';
+import 'avatar.dart';
 import 'game_screen.dart';
 import 'rules_editor.dart';
 import 'theme.dart';
@@ -44,6 +45,19 @@ class PracticeSetupScreen extends StatefulWidget {
 class _PracticeSetupScreenState extends State<PracticeSetupScreen> {
   final prefs = AppPrefs.instance;
   late List<BotLevel> bots = List.of(prefs.practiceBots);
+
+  /// The robots for this game, picked at random when the screen opens (Shuffle picks again).
+  late List<RobotProfile> robots = pickRobots(bots.length);
+
+  void _addBot() => setState(() {
+        bots.add(BotLevel.medium);
+        robots.addAll(pickRobots(1, exclude: {for (final r in robots) r.id}));
+      });
+
+  void _removeBot() => setState(() {
+        bots.removeLast();
+        robots.removeLast();
+      });
   late HouseRules rules = prefs.rules;
 
   @override
@@ -58,23 +72,37 @@ class _PracticeSetupScreenState extends State<PracticeSetupScreen> {
               Text('Computer players', style: MK.body(15, weight: FontWeight.w700)),
               const Spacer(),
               IconButton(
-                onPressed: bots.length > 1 ? () => setState(() => bots.removeLast()) : null,
+                onPressed: bots.length > 1 ? _removeBot : null,
                 icon: const Icon(Icons.remove_circle_outline, color: MK.goldLight),
               ),
               Text('${bots.length}', style: MK.body(18, weight: FontWeight.w700)),
               IconButton(
-                onPressed: bots.length < 3 ? () => setState(() => bots.add(BotLevel.medium)) : null,
+                onPressed: bots.length < 3 ? _addBot : null,
                 icon: const Icon(Icons.add_circle_outline, color: MK.goldLight),
+              ),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: () => setState(() => robots = pickRobots(bots.length)),
+                icon: const Icon(Icons.shuffle, size: 18, color: MK.goldLight),
+                label: Text('Shuffle robots', style: MK.body(13, color: MK.goldLight)),
               ),
             ]),
             for (var i = 0; i < bots.length; i++)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Row(children: [
-                  const Icon(Icons.smart_toy_outlined, color: MK.gold, size: 20),
-                  const SizedBox(width: 8),
-                  SizedBox(width: 80, child: Text('Robot ${i + 1}', style: MK.body(14))),
+                  PlayerAvatar(size: 44, name: robots[i].name, image: robots[i].avatar),
+                  const SizedBox(width: 10),
                   Expanded(
+                    flex: 5,
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                      Text(robots[i].name, style: MK.body(15, weight: FontWeight.w700)),
+                      Text(robots[i].tagline, maxLines: 2, overflow: TextOverflow.ellipsis, style: MK.body(11, color: MK.gold)),
+                    ]),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: 4,
                     child: SegmentedButton<BotLevel>(
                       segments: [for (final l in BotLevel.values) ButtonSegment(value: l, label: Text(levelName(l)))],
                       selected: {bots[i]},
@@ -90,7 +118,7 @@ class _PracticeSetupScreenState extends State<PracticeSetupScreen> {
                 ]),
               ),
             const SizedBox(height: 4),
-            Text('Robots are picked at random from the roster. Easy plays up to 3 tiles a turn and misses more; Medium up to 6; Hard plays everything it finds.',
+            Text('Robots are picked at random from a roster of ${robotRoster.length}; difficulty is up to you. Easy plays up to 3 tiles a turn and misses more; Medium up to 6; Hard plays everything it finds.',
                 style: MK.body(11, color: MK.gold)),
           ]),
         ),
@@ -104,7 +132,7 @@ class _PracticeSetupScreenState extends State<PracticeSetupScreen> {
             prefs.save();
             final players = [
               PlayerInfo('me', prefs.name, SeatKind.human),
-              for (final (i, robot) in pickRobots(bots.length).indexed)
+              for (final (i, robot) in robots.indexed)
                 PlayerInfo('bot$i', '${robot.name} (${levelName(bots[i])})', SeatKind.bot, level: bots[i], avatar: robot.avatar),
             ];
             startLocalGame(context, players, rules, hotSeat: false);

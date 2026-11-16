@@ -5,24 +5,40 @@ class RobotProfile {
   final String id;
   final String name;
 
-  /// Avatar image (asset path).
+  /// One-line personality, shown in Practice setup and on a long-press of the avatar.
+  final String tagline;
+
+  /// Avatar art (asset path): a square picture, drawn clipped to a circle inside the shared gold avatar frame.
   final String avatar;
-  const RobotProfile(this.id, this.name, this.avatar);
+  const RobotProfile(this.id, this.name, this.tagline, this.avatar);
 }
 
-/// The robot roster. Placeholder names and art for now: swap in the final
-/// names and images here (keep the list at 6 or more).
+/// The robot roster. Difficulty is picked separately, so any robot can play at any level.
 const List<RobotProfile> robotRoster = [
-  RobotProfile('bot_1', 'Bolt', 'assets/bots/bot_1.png'),
-  RobotProfile('bot_2', 'Pixel', 'assets/bots/bot_2.png'),
-  RobotProfile('bot_3', 'Rivet', 'assets/bots/bot_3.png'),
-  RobotProfile('bot_4', 'Sprocket', 'assets/bots/bot_4.png'),
-  RobotProfile('bot_5', 'Tinker', 'assets/bots/bot_5.png'),
-  RobotProfile('bot_6', 'Cog', 'assets/bots/bot_6.png'),
+  RobotProfile('bolt', 'Bolt', 'Plays fast, thinks later.', 'assets/bots/robot_bolt.png'),
+  RobotProfile('cogsworth', 'Cogsworth', 'Sorts every rack, judges yours.', 'assets/bots/robot_cogsworth.png'),
+  RobotProfile('pixel', 'Pixel', 'Loves a sneaky joker.', 'assets/bots/robot_pixel.png'),
+  RobotProfile('rusty', 'Rusty', 'Been playing since tiles were wood.', 'assets/bots/robot_rusty.png'),
+  RobotProfile('nova', 'Nova', 'Dreams of the perfect 13-run.', 'assets/bots/robot_nova.png'),
+  RobotProfile('clank', 'Clank', 'Loud, lucky, and a little clumsy.', 'assets/bots/robot_clank.png'),
+  RobotProfile('echo', 'Echo', 'Watches what you play, then copies it.', 'assets/bots/robot_echo.png'),
+  RobotProfile('gizmo', 'Gizmo', 'Always rearranging something.', 'assets/bots/robot_gizmo.png'),
+  RobotProfile('sparky', 'Sparky', 'Gets VERY excited about groups.', 'assets/bots/robot_sparky.png'),
+  RobotProfile('tank', 'Tank', 'Says nothing. Wins anyway.', 'assets/bots/robot_tank.png'),
+  RobotProfile('lumi', 'Lumi', 'Kind, cheerful, secretly ruthless.', 'assets/bots/robot_lumi.png'),
+  RobotProfile('duke', 'Duke', 'Considers himself royalty of the table.', 'assets/bots/robot_duke.png'),
 ];
 
 /// Picks [n] different robots at random, skipping any ids in [exclude].
 List<RobotProfile> pickRobots(int n, {Set<String> exclude = const {}, math.Random? rng}) {
   final pool = robotRoster.where((r) => !exclude.contains(r.id)).toList()..shuffle(rng ?? math.Random());
   return pool.take(n).toList();
+}
+
+/// The robot whose avatar is [avatar], if any (players only carry the avatar path).
+RobotProfile? robotByAvatar(String? avatar) {
+  for (final r in robotRoster) {
+    if (r.avatar == avatar) return r;
+  }
+  return null;
 }

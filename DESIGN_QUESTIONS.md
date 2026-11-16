@@ -46,7 +46,21 @@ Most numbers live in a small set of constants: `BotTuning` (lib/engine/bot.dart)
 32. **What may a bot do with under 5 seconds left?** Bots plan their turn as *moves*: groups of actions that each finish with a valid table (today, each new set and each extension is its own one-action move). With under 5 s left and a valid table, a bot only starts a move whose every action keeps the table valid. Otherwise it ends its turn right away instead of risking a reset. The 5 s is `BotTuning.safeZoneMs`. *Why:* this is your rule, and moves that end valid make the check simple and reliable. It's covered by unit tests in `test/bot_timer_test.dart`.
 33. **What can bots do on the table?** They put down new sets and extend the ends of existing sets. They don't rearrange or split sets. *Why:* it's simple, legal, and beatable. Hard bots that rearrange could come later.
 34. **What if a bot's tile cap stops it reaching the first-meld minimum?** It draws. *Why:* an Easy bot should sometimes struggle to get started.
-35. **Bot names and avatars?** There's a roster of 6 robots (id, name, avatar image) in `lib/app/bot_roster.dart`. A Practice game with N bots picks N different robots at random, and the difficulty is added to the name, for example "Pixel (Medium)". Bots added to an online lobby also take a robot nobody at the table is using. The names (Bolt, Pixel, Rivet, Sprocket, Tinker, Cog) and the simple robot-face avatars in `assets/bots/bot_1.png` to `bot_6.png` are placeholders until your final art and names arrive. *Why:* you asked for a random cast of named robots, and the art swaps in without code changes.
+35. **Bot names and avatars?** There's a final roster of 12 robots in `lib/app/bot_roster.dart`. Each has an id, name, tagline and avatar picture in `assets/bots/robot_<name>.png`, scaled down from the 512 px art to 256 px:
+    - Bolt: "Plays fast, thinks later."
+    - Cogsworth: "Sorts every rack, judges yours."
+    - Pixel: "Loves a sneaky joker."
+    - Rusty: "Been playing since tiles were wood."
+    - Nova: "Dreams of the perfect 13-run."
+    - Clank: "Loud, lucky, and a little clumsy."
+    - Echo: "Watches what you play, then copies it."
+    - Gizmo: "Always rearranging something."
+    - Sparky: "Gets VERY excited about groups."
+    - Tank: "Says nothing. Wins anyway."
+    - Lumi: "Kind, cheerful, secretly ruthless."
+    - Duke: "Considers himself royalty of the table."
+
+    Practice setup picks N different robots at random as soon as it opens. It shows each robot's picture, name and tagline next to its difficulty choice, and Shuffle robots picks again. Difficulty is separate, so any robot can be Easy, Medium or Hard, and the level is added to the name in game, for example "Pixel (Medium)". Long-press a robot's avatar at the table to see its tagline. Bots added to an online lobby take a robot nobody at the table is using, and the lobby shows their level and tagline. The personalities are flavour only for now: every robot of the same difficulty plays the same way. *Why:* you approved this roster. Making the taglines change how each robot plays (Echo copying you, Sparky preferring groups) is a possible later step.
 36. **Can bots fill empty seats online?** Yes, the host can add Easy, Medium or Hard bots in the lobby. *Why:* a 2-person online game can become a 4-player table.
 
 ## D. Online play
@@ -63,7 +77,7 @@ Most numbers live in a small set of constants: `BotTuning` (lib/engine/bot.dart)
 ## E. Look, sound and wording
 
 45. **Sounds?** None in v0.1. Vibration (light taps on pick-up and drop) is on by default and can be switched off in Options. *Why:* sound needs real assets, and silent play suits game nights.
-46. **Avatars?** A coloured circle with the player's initial for people. Bots use their roster robot's picture (placeholders for now, see #35). *Why:* there's nothing to upload or store, and it matches the mockup.
+46. **Avatars?** Everyone uses the same circular frame: a 3 px #c9a24a gold ring with a drop shadow (board A style), plus a soft gold glow on whoever's turn it is. Inside the frame, robots show their picture clipped to a circle, and people show their initial on their seat colour. The frame is drawn by the app, so the art itself has no ring. The same frame appears at the table, in Practice setup and in the online lobby. *Why:* one consistent frame matches the board mockup, and people have nothing to upload or store.
 47. **Default name?** "Player", changeable in Options or on the Join screen. *Why:* there's no sign-up.
 48. **What does the main button say?** "Draw" when you haven't played, "End turn" once you have, "Pass" when the pile is empty, and a greyed "Draw / End turn" on others' turns. *Why:* it always says exactly what will happen.
 49. **What does the Pass-and-play cover screen say?** "Pass the phone to *Name*" and "Everyone else, look away from the rack", with the button "I'm *Name*, start my turn". Your turn timer starts only when you tap the button. *Why:* nobody loses time while the phone changes hands.

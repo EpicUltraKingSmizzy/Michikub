@@ -78,7 +78,9 @@ class _RulesEditorState extends State<RulesEditor> {
                     setState(() {});
                   },
           ),
-        if (widget.enabled)
+        // Only once the rules differ from Classic and from every saved preset: there's
+        // something new to save.
+        if (widget.enabled && current == null)
           TextButton.icon(onPressed: _savePreset, icon: const Icon(Icons.bookmark_add_outlined, size: 18), label: const Text('Save as preset')),
       ]),
       const SizedBox(height: 6),

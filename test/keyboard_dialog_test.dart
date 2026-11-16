@@ -28,7 +28,7 @@ void main() {
   testWidgets('Save as preset: usable in landscape with the keyboard up', (tester) async {
     landscapeWithKeyboard(tester);
     AppPrefs.instance.presets.clear();
-    var rules = HouseRules.classic;
+    var rules = HouseRules.classic.copyWith(handSize: 16); // changed, so Save as preset shows
     await tester.pumpWidget(MaterialApp(
       theme: MK.theme(),
       home: Scaffold(
@@ -54,6 +54,35 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(TextField), findsNothing, reason: 'dialog closed');
     expect(AppPrefs.instance.presets.containsKey('test'), true);
+  });
+
+  testWidgets('Save as preset shows only once the rules differ from Classic and saved presets', (tester) async {
+    landscapeWithKeyboard(tester);
+    AppPrefs.instance.presets
+      ..clear()
+      ..['Quick'] = HouseRules.classic.copyWith(turnSeconds: 30);
+    var rules = HouseRules.classic;
+    late void Function(HouseRules) setRules;
+    await tester.pumpWidget(MaterialApp(
+      theme: MK.theme(),
+      home: Scaffold(
+        body: StatefulBuilder(builder: (context, set) {
+          setRules = (r) => set(() => rules = r);
+          return ListView(children: [RulesEditor(rules: rules, onChanged: setRules)]);
+        }),
+      ),
+    ));
+    expect(find.text('Save as preset'), findsNothing, reason: 'Classic');
+    setRules(HouseRules.classic.copyWith(handSize: 16));
+    await tester.pump();
+    expect(find.text('Save as preset'), findsOneWidget, reason: 'changed');
+    setRules(HouseRules.classic);
+    await tester.pump();
+    expect(find.text('Save as preset'), findsNothing, reason: 'changed back');
+    setRules(HouseRules.classic.copyWith(turnSeconds: 30));
+    await tester.pump();
+    expect(find.text('Save as preset'), findsNothing, reason: 'same as the saved Quick preset');
+    AppPrefs.instance.presets.clear();
   });
 
   testWidgets('the shared form dialog scrolls instead of overflowing, even with tall content', (tester) async {

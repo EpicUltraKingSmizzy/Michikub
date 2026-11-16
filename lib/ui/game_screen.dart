@@ -824,8 +824,10 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   /// How much of the board to show: 3 rows and a narrow width to start, growing (rows and
-  /// columns independently) as sets spread down or across, so tiles start large. One empty
-  /// row below the lowest set and a few empty columns to the right stay in view for new sets.
+  /// columns independently) as sets spread down or across, so tiles start large. Rows grow
+  /// only when a set sits below the rows in view (Add row, auto-placement), never just
+  /// because a tile landed in the last visible row: every row keeps the same cell size.
+  /// A few empty columns to the right stay in view so sets can be extended.
   ({double rows, double cols}) _boardView(Board b) {
     final used = b.usedRows;
     var maxCol = -1;
@@ -837,7 +839,7 @@ class _GameScreenState extends State<GameScreen> {
         }
       }
     }
-    final rows = math.max(TableGeo.minViewRows, (used.isEmpty ? 0 : used.last + 2).toDouble());
+    final rows = math.max(TableGeo.minViewRows, (used.isEmpty ? 0 : used.last + 1).toDouble());
     final cols = math.max(TableGeo.minViewCols, (maxCol + 1 + TableTuning.spareCols).toDouble());
     return (rows: rows, cols: cols);
   }

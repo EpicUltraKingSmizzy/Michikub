@@ -318,7 +318,7 @@ void main() {
           board: bd, rack: [k(8), r(1)], melded: true, firstMeld: 30, level: BotLevel.hard, rng: math.Random(1));
       expect(plan.tileCount, 1);
       var out = bd;
-      out = applyBotTile(out, plan.steps.single, 0);
+      out = applyBotStep(out, plan.steps.single);
       expect(out.blocksInRow(0).single.tiles, [k(5), k(6), k(7), k(8)]);
     });
     test('bot-only games always finish with legal turns', () async {
@@ -348,9 +348,7 @@ void main() {
           } else {
             var bd = h.board.copy();
             for (final st in plan.steps) {
-              for (var i = 0; i < (st.isNewSet ? st.tiles.length : 1); i++) {
-                bd = applyBotTile(bd, st, i);
-              }
+              bd = applyBotStep(bd, st);
             }
             final res = h.handle(p.id, CommitAction(bd));
             expect(res.ok, true, reason: 'seed $seed turn $turns: ${res.error}\n$bd');

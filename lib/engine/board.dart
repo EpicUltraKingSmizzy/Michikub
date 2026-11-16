@@ -8,7 +8,7 @@ class LayoutTuning {
   static const int rowWidth = 27;
 
   /// Rows a fresh board starts with.
-  static const int startRows = 6;
+  static const int startRows = 5;
 
   /// A set that must move stays in its row if it moves this far or less.
   static const int stayInRowMax = 3;

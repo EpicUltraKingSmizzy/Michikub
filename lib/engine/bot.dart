@@ -22,18 +22,19 @@ class BotTuning {
     BotLevel.hard: 0.0,
   };
 
-  /// Thinking time before the first tile, scaled by tiles about to be played.
-  static const int thinkMinMs = 1500;
-  static const int thinkMaxMs = 4000;
+  /// Bots decide their whole turn instantly (no thinking delay), then carry
+  /// it out one action at a time. Each action is shown, then followed by
+  /// its pause before the next action (or the end of the turn).
+  ///
+  /// A single tile moved: a rack tile extending a table set, or a tile
+  /// moved on the table.
+  static const int singleTileMs = 500;
 
-  /// Tiles at which thinking time reaches its maximum.
-  static const int thinkFullAtTiles = 8;
+  /// A split, or a whole set moved on the table.
+  static const int splitOrSetMoveMs = 1000;
 
-  /// Pause between placing one tile and the next.
-  static const int perTileMs = 650;
-
-  /// Pause after the last tile before ending the turn.
-  static const int endTurnMs = 700;
+  /// A new set put down from the rack.
+  static const int newSetMs = 2000;
 
   /// Search budget for picking melds.
   static const int searchNodes = 6000;
@@ -214,28 +215,19 @@ BotPlan planTurn({
   return BotPlan(steps);
 }
 
-/// Applies one tile of a plan to a board, the way a human would drop it.
-Board applyBotTile(Board board, BotStep step, int indexInSet, {List<int>? newSetAnchor}) {
+/// Applies one step of a plan to a board, the way a human would drop it: a
+/// new set goes into the first free spot; an extension joins its set's end.
+Board applyBotStep(Board board, BotStep step) {
   if (step.isNewSet) {
-    final t = step.tiles[indexInSet];
-    if (indexInSet == 0) {
-      final spot = Layout.findSpotForNewSet(board, step.tiles.length);
-      return Layout.place(spot.board, [t], spot.row, spot.col);
-    }
-    final prev = board.find(step.tiles[indexInSet - 1])!;
-    return Layout.place(board, [t], prev.row, prev.col + 1);
+    final spot = Layout.findSpotForNewSet(board, step.tiles.length);
+    return Layout.place(spot.board, step.tiles, spot.row, spot.col, merge: false);
   }
   final blk = board.blockOf(step.extendSetTile!)!;
   return Layout.insertInto(board, [step.tile!], step.extendSetTile!, step.atEnd ? blk.length : 0);
 }
 
-/// Thinking time before the first tile.
-int thinkMs(int tiles, math.Random rng) {
-  final f = math.min(1.0, tiles / BotTuning.thinkFullAtTiles);
-  final base = BotTuning.thinkMinMs + (BotTuning.thinkMaxMs - BotTuning.thinkMinMs) * f;
-  final jitter = (rng.nextDouble() - 0.5) * 500;
-  return (base + jitter).clamp(BotTuning.thinkMinMs, BotTuning.thinkMaxMs).round();
-}
+/// The pause that follows a step.
+int stepPauseMs(BotStep step) => step.isNewSet ? BotTuning.newSetMs : BotTuning.singleTileMs;
 
 /// Drives the bot seats of a [GameHost]: waits, plays tiles one at a time
 /// as previews, then commits (or draws).
@@ -270,6 +262,7 @@ class BotDriver {
   Future<void> _wait(int ms) => Future.delayed(Duration(milliseconds: (ms / speed).round()));
 
   Future<void> _play(PlayerInfo p, int seq) async {
+    // Decide the whole turn at once: no thinking delay.
     final plan = planTurn(
       board: host.board,
       rack: host.racks[p.id]!,
@@ -278,29 +271,20 @@ class BotDriver {
       level: p.level,
       rng: rng,
     );
-    await _wait(thinkMs(plan.tileCount, rng));
-    while (_paused && !_disposed) {
-      await _wait(300);
-    }
-    if (_disposed || host.turnSeq != seq) return;
     if (plan.draws) {
       host.handle(p.id, const DrawAction());
       return;
     }
     var b = host.board.copy();
     for (final step in plan.steps) {
-      final n = step.isNewSet ? step.tiles.length : 1;
-      for (var i = 0; i < n; i++) {
-        b = applyBotTile(b, step, i);
-        if (_disposed || host.turnSeq != seq) return;
-        host.handle(p.id, PreviewAction(b));
-        await _wait(BotTuning.perTileMs);
-        while (_paused && !_disposed) {
-          await _wait(300);
-        }
+      while (_paused && !_disposed) {
+        await _wait(300);
       }
+      if (_disposed || host.turnSeq != seq) return;
+      b = applyBotStep(b, step);
+      host.handle(p.id, PreviewAction(b));
+      await _wait(stepPauseMs(step));
     }
-    await _wait(BotTuning.endTurnMs);
     if (_disposed || host.turnSeq != seq) return;
     final r = host.handle(p.id, CommitAction(b));
     if (!r.ok) host.handle(p.id, const DrawAction());

@@ -81,7 +81,7 @@ void main() {
         // After the 1 s start delay, one move that lays 12 lone tiles (each an
         // invalid set) at 0.5 s each: 7 s in total, longer than the 6 s timer.
         final d = scripted(h, BotPlan([
-          BotMove([for (var i = 0; i < 12; i++) BotStep.tileAt(r(i + 1), i % 5, (i ~/ 5) * 4)]),
+          BotPlay([for (var i = 0; i < 12; i++) BotStep.tileAt(r(i + 1), i % 5, (i ~/ 5) * 4)]),
         ]));
         async.elapse(const Duration(milliseconds: 2600));
         expect(h.preview, isNotNull, reason: 'the bot is mid-move');
@@ -106,8 +106,8 @@ void main() {
         final rack = [r(1), r(2), r(3), b(1), b(2), b(3), r(13), y(13)];
         final h = botGame(7, rack);
         final d = scripted(h, BotPlan([
-          BotMove([BotStep.newSet([r(1), r(2), r(3)])]),
-          BotMove([BotStep.tileAt(b(1), 2, 0), BotStep.tileAt(b(2), 2, 1), BotStep.tileAt(b(3), 2, 2)]),
+          BotPlay([BotStep.newSet([r(1), r(2), r(3)])]),
+          BotPlay([BotStep.tileAt(b(1), 2, 0), BotStep.tileAt(b(2), 2, 1), BotStep.tileAt(b(3), 2, 2)]),
         ]));
         // After the 1 s start delay the first set lands at 1 s; at 3 s only
         // 4 s remain, so the tile-by-tile move is skipped and the turn ends at once.
@@ -125,8 +125,8 @@ void main() {
         final rack = [r(1), r(2), r(3), b(1), b(2), b(3), r(13), y(13)];
         final h = botGame(60, rack);
         final d = scripted(h, BotPlan([
-          BotMove([BotStep.newSet([r(1), r(2), r(3)])]),
-          BotMove([BotStep.tileAt(b(1), 2, 0), BotStep.tileAt(b(2), 2, 1), BotStep.tileAt(b(3), 2, 2)]),
+          BotPlay([BotStep.newSet([r(1), r(2), r(3)])]),
+          BotPlay([BotStep.tileAt(b(1), 2, 0), BotStep.tileAt(b(2), 2, 1), BotStep.tileAt(b(3), 2, 2)]),
         ]));
         async.elapse(const Duration(milliseconds: 2000));
         expect(h.preview!.allTiles.length, 3, reason: 'new set shown first (after the 1 s start delay)');
@@ -146,7 +146,7 @@ void main() {
       fakeAsync((async) {
         final rack = [r(1), r(2), r(3), r(13), y(13)];
         final h = botGame(60, rack);
-        final d = scripted(h, BotPlan([BotMove([BotStep.newSet([r(1), r(2), r(3)])])]));
+        final d = scripted(h, BotPlan([BotPlay([BotStep.newSet([r(1), r(2), r(3)])])]));
         async.elapse(const Duration(milliseconds: BotTuning.turnStartMs - 10));
         expect(h.preview, isNull, reason: 'nothing yet');
         expect(h.currentPlayer.id, 'bot');
@@ -180,8 +180,8 @@ void main() {
       expect(stepPauseMs(const BotStep.newSet([1, 2, 3])), BotTuning.newSetMs);
       expect(stepPauseMs(const BotStep.extend(4, 1, true)), BotTuning.singleTileMs);
       expect(stepPauseMs(const BotStep.tileAt(4, 0, 0)), BotTuning.singleTileMs);
-      expect(moveStaysValid(Board.empty(), BotMove([BotStep.newSet([r(1), r(2), r(3)])])), true);
-      expect(moveStaysValid(Board.empty(), BotMove([BotStep.tileAt(r(1), 0, 0), BotStep.tileAt(r(2), 0, 1)])), false);
+      expect(playStaysValid(Board.empty(), BotPlay([BotStep.newSet([r(1), r(2), r(3)])])), true);
+      expect(playStaysValid(Board.empty(), BotPlay([BotStep.tileAt(r(1), 0, 0), BotStep.tileAt(r(2), 0, 1)])), false);
     });
   });
 

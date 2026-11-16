@@ -118,7 +118,7 @@ class _PracticeSetupScreenState extends State<PracticeSetupScreen> {
                 ]),
               ),
             const SizedBox(height: 4),
-            Text('Robots are picked at random from a roster of ${robotRoster.length}; difficulty is up to you. Easy plays up to 3 tiles a turn and misses more; Medium up to 6; Hard plays everything it finds.',
+            Text('Robots are picked at random from a roster of ${robotRoster.length}; difficulty is up to you. Easy makes up to 6 moves a turn and overlooks more plays; Medium up to 12; Hard makes every play it finds.',
                 style: MK.body(11, color: MK.gold)),
           ]),
         ),

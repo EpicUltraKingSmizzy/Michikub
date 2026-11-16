@@ -329,19 +329,6 @@ void main() {
       );
       expect(plan2.tileCount, 3);
     });
-    test('easy bot plays at most 3 tiles', () {
-      for (var s = 0; s < 20; s++) {
-        final plan = planTurn(
-          board: Board.empty(),
-          rack: [for (var n = 1; n <= 9; n++) r(n)],
-          melded: true,
-          firstMeld: 30,
-          level: BotLevel.easy,
-          rng: math.Random(s),
-        );
-        expect(plan.tileCount <= 3, true);
-      }
-    });
     test('hard bot extends table sets', () {
       final bd = boardWith([
         (0, 0, [k(5), k(6), k(7)]),

@@ -10,7 +10,7 @@ An ad-free number-tile game for 2 to 4 friends. Phones connect directly to each 
 
 - **Practice vs bots**: you against 1 to 3 computer players, each set to Easy, Medium or Hard.
 - **Pass-and-play**: 2 to 4 people on one phone, with a "pass the phone to…" cover screen between turns.
-- **Host a game / Join a game**: online play with a 6-character room code, or with copy-and-paste invite messages that need no matchmaking service at all.
+- **Host a game / Join a game**: online play with a 6-character room code: Share sends friends a link that opens the room.
 - **House rules with saved presets**: first meld (Off or 3 to 50), starting hand (7 to 20), jokers (0 to 4: red, black, yellow, blue), turn timer (Off/30/60/120 s) and tiles drawn when passing (1 to 3).
 - **The table**: a mahogany table, a crimson velvet rack (10 per row, sliding up for a second row), gold face-down tiles for opponents, flying draw and play animations, and large suit symbols.
 - **Gestures**: drag anywhere. Long-press a rack tile to grab its run or group. Long-press a table set to move it. Double-tap to split a set. Tap a tile then tap a set to auto-place it. An Add row button, an invisible 27-space snap grid with automatic room-making, and a table view that starts zoomed in (3 rows) and zooms out as sets spread. 789 and 777 sort the rack with complete sets first, and Reset puts every tile back where it was at the start of your turn.

@@ -124,7 +124,7 @@ class _HostLobbyScreenState extends State<HostLobbyScreen> {
                 else
                   RoomCode(net.code, style: MK.code(36, letterSpacing: 6)),
                 if (net.error != null) Text(net.error!, style: MK.body(12, color: MK.danger)),
-                Text('Tap Share to send friends a link that opens Michikub straight to this room, or they can tap Join a game and type the code (long-press it to copy). Only connection details pass through the free matchmaking service.',
+                Text('Send friends the link so they can join your room (long-press to copy the code).',
                     style: MK.body(11, color: MK.gold)),
               ]),
             ),

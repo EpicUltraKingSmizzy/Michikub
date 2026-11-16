@@ -88,6 +88,16 @@ class _HostLobbyScreenState extends State<HostLobbyScreen> {
   Widget build(BuildContext context) {
     return MkScaffold(
       title: 'Host a game',
+      actions: [
+        Text(net.canStart ? '' : 'Need 2+ players  ', style: MK.body(12, color: MK.gold)),
+        GoldButton('Start game', icon: Icons.play_arrow, compact: true, onPressed: net.canStart
+              ? () {
+                  _started = true;
+                  final session = net.start();
+                  Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => GameScreen(session: session)));
+                }
+              : null),
+      ],
       body: ListView(padding: const EdgeInsets.fromLTRB(20, 4, 20, 20), children: [
         MkPanel(
           child: Row(children: [
@@ -149,16 +159,6 @@ class _HostLobbyScreenState extends State<HostLobbyScreen> {
               prefs.save();
             },
           ),
-        ),
-        const SizedBox(height: 14),
-        Center(
-          child: GoldButton('Start game', icon: Icons.play_arrow, onPressed: net.canStart
-              ? () {
-                  _started = true;
-                  final session = net.start();
-                  Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => GameScreen(session: session)));
-                }
-              : null),
         ),
       ]),
     );

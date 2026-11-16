@@ -42,30 +42,32 @@ Most numbers live in a small set of constants: `BotTuning` (lib/engine/bot.dart)
 
 29. **Difficulty numbers?** Easy places at most 3 tiles a turn and overlooks 40% of the plays it finds. Medium places at most 6 and overlooks 15%. Hard has no limit and plays everything it finds. All of these are in `BotTuning`. *Why:* this follows your request.
 30. **How fast do bots play?** A bot decides its whole turn instantly, with no thinking delay, then carries it out one action at a time. Each action shows on the table and is followed by a pause: 0.5 s for a single tile (a rack tile extending a set, or a tile moved on the table), 1 s for a split or a whole set moved on the table, and 2 s for a new set put down from the rack (all its tiles fly in together). The turn ends after the last pause. A bot that draws does so at once. The constants are `singleTileMs`, `splitOrSetMoveMs` and `newSetMs` in `BotTuning`. *Why:* this follows your pacing spec. Today's bots never split or move sets, so the 1 s pause is ready for smarter bots.
-31. **What can bots do on the table?** They put down new sets and extend the ends of existing sets. They don't rearrange or split sets. *Why:* it's simple, legal, and beatable. Hard bots that rearrange could come later.
-32. **What if a bot's tile cap stops it reaching the first-meld minimum?** It draws. *Why:* an Easy bot should sometimes struggle to get started.
-33. **Bot names?** Rosa, Theo and Juno, with the difficulty shown, for example "Rosa (Medium)". *Why:* it's friendly, and you can see at a glance who is who.
-34. **Can bots fill empty seats online?** Yes, the host can add Easy, Medium or Hard bots in the lobby. *Why:* a 2-person online game can become a 4-player table.
+31. **What if the timer runs out while a bot is still playing?** The normal timeout rule applies, exactly as for people. If the table is valid, the turn ends with whatever was played, with no draw (it draws only if nothing was played). If the table is invalid, it resets to the start of the turn, the attempted tiles go back to the bot's rack, and it draws as if passing. The bot's remaining actions are cancelled on the spot: every pending action first checks that its turn is still running, so nothing extra lands on the table afterwards. *Why:* this is your rule, and it treats bots the same as humans.
+32. **What may a bot do with under 5 seconds left?** Bots plan their turn as *moves*: groups of actions that each finish with a valid table (today, each new set and each extension is its own one-action move). With under 5 s left and a valid table, a bot only starts a move whose every action keeps the table valid. Otherwise it ends its turn right away instead of risking a reset. The 5 s is `BotTuning.safeZoneMs`. *Why:* this is your rule, and moves that end valid make the check simple and reliable. It's covered by unit tests in `test/bot_timer_test.dart`.
+33. **What can bots do on the table?** They put down new sets and extend the ends of existing sets. They don't rearrange or split sets. *Why:* it's simple, legal, and beatable. Hard bots that rearrange could come later.
+34. **What if a bot's tile cap stops it reaching the first-meld minimum?** It draws. *Why:* an Easy bot should sometimes struggle to get started.
+35. **Bot names?** Rosa, Theo and Juno, with the difficulty shown, for example "Rosa (Medium)". *Why:* it's friendly, and you can see at a glance who is who.
+36. **Can bots fill empty seats online?** Yes, the host can add Easy, Medium or Hard bots in the lobby. *Why:* a 2-person online game can become a 4-player table.
 
 ## D. Online play
 
-35. **What format is the room code?** 6 characters with no look-alikes (no 0/O or 1/I/L). *Why:* it's easy to read out loud.
-36. **What if the host leaves?** The game ends for everyone with "The host closed the game." There's no host migration. *Why:* the host's phone holds the game, so moving it is a bigger feature.
-37. **What if a guest drops?** Their seat shows "(offline)", their turns pass automatically after 5 seconds, and joining again with the same code and name gets the seat back. *Why:* one bad signal shouldn't stop the game.
-38. **Can someone join a game in progress?** Only to take back their own seat. New players wait for the next game. *Why:* there are no extra tiles to deal mid-round.
-39. **How many friends per message invite?** One invite per friend. The host taps "Invite by message" again for each one. *Why:* each phone-to-phone link needs its own invite and reply.
-40. **Who edits the house rules?** The host only. Guests see a summary in the lobby and in the game menu. *Why:* it gives one source of truth.
-41. **Do Test tools affect online games?** No, only Practice and Pass-and-play. *Why:* so nobody gets a joker handed to them in a real game.
-42. **Is an unfinished game saved if the app closes?** Not in v0.1. *Why:* it's planned for the polish step, and the engine state is already plain data that can be saved.
+37. **What format is the room code?** 6 characters with no look-alikes (no 0/O or 1/I/L). *Why:* it's easy to read out loud.
+38. **What if the host leaves?** The game ends for everyone with "The host closed the game." There's no host migration. *Why:* the host's phone holds the game, so moving it is a bigger feature.
+39. **What if a guest drops?** Their seat shows "(offline)", their turns pass automatically after 5 seconds, and joining again with the same code and name gets the seat back. *Why:* one bad signal shouldn't stop the game.
+40. **Can someone join a game in progress?** Only to take back their own seat. New players wait for the next game. *Why:* there are no extra tiles to deal mid-round.
+41. **How many friends per message invite?** One invite per friend. The host taps "Invite by message" again for each one. *Why:* each phone-to-phone link needs its own invite and reply.
+42. **Who edits the house rules?** The host only. Guests see a summary in the lobby and in the game menu. *Why:* it gives one source of truth.
+43. **Do Test tools affect online games?** No, only Practice and Pass-and-play. *Why:* so nobody gets a joker handed to them in a real game.
+44. **Is an unfinished game saved if the app closes?** Not in v0.1. *Why:* it's planned for the polish step, and the engine state is already plain data that can be saved.
 
 ## E. Look, sound and wording
 
-43. **Sounds?** None in v0.1. Vibration (light taps on pick-up and drop) is on by default and can be switched off in Options. *Why:* sound needs real assets, and silent play suits game nights.
-44. **Avatars?** A coloured circle with the player's initial, and a robot icon for bots. *Why:* there's nothing to upload or store, and it matches the mockup.
-45. **Default name?** "Player", changeable in Options or on the Join screen. *Why:* there's no sign-up.
-46. **What does the main button say?** "Draw" when you haven't played, "End turn" once you have, "Pass" when the pile is empty, and a greyed "Draw / End turn" on others' turns. *Why:* it always says exactly what will happen.
-47. **What does the Pass-and-play cover screen say?** "Pass the phone to *Name*" and "Everyone else, look away from the rack", with the button "I'm *Name*, start my turn". Your turn timer starts only when you tap the button. *Why:* nobody loses time while the phone changes hands.
-48. **What does the results screen show?** The winner, why the round ended, each player's leftover tiles, the round score and the running total, plus Next round and Home. *Why:* the leftover tiles make the scoring easy to check.
-49. **Is there a pause?** Opening the menu in Practice or Pass-and-play pauses the timer and the bots. Online games can't be paused. *Why:* you can't pause other people's phones fairly.
-50. **What's the home screen tagline?** "Tiles with friends. No ads, no servers." *Why:* it says what makes Michikub different.
-51. **Should the joker art be thicker?** The line art was thickened for tile size (a bolder version of your 4-colour drawing). *Why:* the original lines vanish at about 30 px.
+45. **Sounds?** None in v0.1. Vibration (light taps on pick-up and drop) is on by default and can be switched off in Options. *Why:* sound needs real assets, and silent play suits game nights.
+46. **Avatars?** A coloured circle with the player's initial, and a robot icon for bots. *Why:* there's nothing to upload or store, and it matches the mockup.
+47. **Default name?** "Player", changeable in Options or on the Join screen. *Why:* there's no sign-up.
+48. **What does the main button say?** "Draw" when you haven't played, "End turn" once you have, "Pass" when the pile is empty, and a greyed "Draw / End turn" on others' turns. *Why:* it always says exactly what will happen.
+49. **What does the Pass-and-play cover screen say?** "Pass the phone to *Name*" and "Everyone else, look away from the rack", with the button "I'm *Name*, start my turn". Your turn timer starts only when you tap the button. *Why:* nobody loses time while the phone changes hands.
+50. **What does the results screen show?** The winner, why the round ended, each player's leftover tiles, the round score and the running total, plus Next round and Home. *Why:* the leftover tiles make the scoring easy to check.
+51. **Is there a pause?** Opening the menu in Practice or Pass-and-play pauses the timer and the bots. Online games can't be paused. *Why:* you can't pause other people's phones fairly.
+52. **What's the home screen tagline?** "Tiles with friends. No ads, no servers." *Why:* it says what makes Michikub different.
+53. **Should the joker art be thicker?** The line art was thickened for tile size (a bolder version of your 4-colour drawing). *Why:* the original lines vanish at about 30 px.

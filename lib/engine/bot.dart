@@ -36,34 +36,71 @@ class BotTuning {
   /// A new set put down from the rack.
   static const int newSetMs = 2000;
 
+  /// With less than this much turn time left (and a valid board), a bot
+  /// only starts moves whose every step keeps the board valid; otherwise it
+  /// ends its turn.
+  static const int safeZoneMs = 5000;
+
   /// Search budget for picking melds.
   static const int searchNodes = 6000;
 }
 
-/// One tile (or a whole new set's worth, one tile at a time) the bot will
-/// put on the table.
+enum BotActionKind { singleTile, splitOrSetMove, newSet }
+
+/// One visible action: a new set from the rack, a rack tile extending a
+/// set, or a single tile put at a spot on the table.
 class BotStep {
-  /// Tiles of a new set, in order (empty for an extension).
+  /// Tiles of a new set, in order (empty otherwise).
   final List<int> tiles;
 
-  /// For an extension: the tile to add, and a tile already in the target set.
+  /// The tile moved (extension or tileAt).
   final int? tile;
+
+  /// For an extension: a tile already in the target set.
   final int? extendSetTile;
   final bool atEnd;
+
+  /// For tileAt: where the tile goes.
+  final int? row, col;
+
   const BotStep.newSet(this.tiles)
       : tile = null,
         extendSetTile = null,
+        atEnd = true,
+        row = null,
+        col = null;
+  const BotStep.extend(int this.tile, int this.extendSetTile, this.atEnd)
+      : tiles = const [],
+        row = null,
+        col = null;
+  const BotStep.tileAt(int this.tile, int this.row, int this.col)
+      : tiles = const [],
+        extendSetTile = null,
         atEnd = true;
-  const BotStep.extend(int this.tile, int this.extendSetTile, this.atEnd) : tiles = const [];
-  bool get isNewSet => extendSetTile == null;
+
+  bool get isNewSet => tiles.isNotEmpty;
+  bool get isExtension => extendSetTile != null;
+  BotActionKind get kind => isNewSet ? BotActionKind.newSet : BotActionKind.singleTile;
+  int get tileCount => isNewSet ? tiles.length : 1;
 }
 
-/// A planned turn: either a list of steps, or draw.
-class BotPlan {
+/// A group of steps that, taken together, ends with a valid table. Steps
+/// inside a move may pass through invalid states (for example building a
+/// set one tile at a time); the table is only promised valid between moves.
+class BotMove {
   final List<BotStep> steps;
-  const BotPlan(this.steps);
-  bool get draws => steps.isEmpty;
-  int get tileCount => steps.fold(0, (s, x) => s + (x.isNewSet ? x.tiles.length : 1));
+  const BotMove(this.steps);
+  int get tileCount => steps.fold(0, (s, x) => s + x.tileCount);
+}
+
+/// A planned turn: a list of moves, or (if empty) draw.
+class BotPlan {
+  final List<BotMove> moves;
+  const BotPlan(this.moves);
+  factory BotPlan.ofSteps(List<BotStep> steps) => BotPlan([for (final s in steps) BotMove([s])]);
+  bool get draws => moves.isEmpty;
+  List<BotStep> get steps => [for (final m in moves) ...m.steps];
+  int get tileCount => moves.fold(0, (s, x) => s + x.tileCount);
 }
 
 /// All runs and groups that can be made from [rack], jokers included.
@@ -178,7 +215,7 @@ BotPlan planTurn({
     used.addAll(m);
     placed += m.length;
   }
-  if (needFirst) return BotPlan(steps); // can't touch the table yet
+  if (needFirst) return BotPlan.ofSteps(steps); // can't touch the table yet
 
   // Extend sets already on the table, one tile at a time.
   final sets = [for (final b in board.blocks) List<int>.of(b.tiles)];
@@ -212,7 +249,7 @@ BotPlan planTurn({
       }
     }
   }
-  return BotPlan(steps);
+  return BotPlan.ofSteps(steps);
 }
 
 /// Applies one step of a plan to a board, the way a human would drop it: a
@@ -222,12 +259,29 @@ Board applyBotStep(Board board, BotStep step) {
     final spot = Layout.findSpotForNewSet(board, step.tiles.length);
     return Layout.place(spot.board, step.tiles, spot.row, spot.col, merge: false);
   }
-  final blk = board.blockOf(step.extendSetTile!)!;
-  return Layout.insertInto(board, [step.tile!], step.extendSetTile!, step.atEnd ? blk.length : 0);
+  if (step.isExtension) {
+    final blk = board.blockOf(step.extendSetTile!)!;
+    return Layout.insertInto(board, [step.tile!], step.extendSetTile!, step.atEnd ? blk.length : 0);
+  }
+  return Layout.place(board, [step.tile!], step.row!, step.col!);
 }
 
 /// The pause that follows a step.
-int stepPauseMs(BotStep step) => step.isNewSet ? BotTuning.newSetMs : BotTuning.singleTileMs;
+int stepPauseMs(BotStep step) => switch (step.kind) {
+      BotActionKind.newSet => BotTuning.newSetMs,
+      BotActionKind.splitOrSetMove => BotTuning.splitOrSetMoveMs,
+      BotActionKind.singleTile => BotTuning.singleTileMs,
+    };
+
+/// True when every step of [move], applied to [board], leaves a valid table.
+bool moveStaysValid(Board board, BotMove move) {
+  var b = board;
+  for (final st in move.steps) {
+    b = applyBotStep(b, st);
+    if (!b.isValid) return false;
+  }
+  return true;
+}
 
 /// Drives the bot seats of a [GameHost]: waits, plays tiles one at a time
 /// as previews, then commits (or draws).
@@ -235,12 +289,15 @@ class BotDriver {
   final GameHost host;
   final math.Random rng;
   final double speed;
+
+  /// Tests can replace the planner to run a scripted turn.
+  final BotPlan Function(GameHost host, PlayerInfo bot)? planOverride;
   StreamSubscription<void>? _sub;
   int _handledTurn = -1;
   bool _paused = false;
   bool _disposed = false;
 
-  BotDriver(this.host, {int? seed, this.speed = 1.0}) : rng = math.Random(seed) {
+  BotDriver(this.host, {int? seed, this.speed = 1.0, this.planOverride}) : rng = math.Random(seed) {
     _sub = host.changes.listen((_) => _check());
   }
 
@@ -256,38 +313,62 @@ class BotDriver {
     final p = host.currentPlayer;
     if (p.kind != SeatKind.bot || _handledTurn == host.turnSeq) return;
     _handledTurn = host.turnSeq;
-    _play(p, host.turnSeq);
+    final seq = host.turnSeq;
+    // Run outside the host's change notification (it's a sync stream).
+    Timer.run(() => _play(p, seq));
   }
 
   Future<void> _wait(int ms) => Future.delayed(Duration(milliseconds: (ms / speed).round()));
 
+  /// The turn this driver started is over (timeout, round end, or quit):
+  /// stop at once and touch nothing.
+  bool _stale(int seq) => _disposed || host.turnSeq != seq || host.result != null;
+
+  Future<void> _waitWhilePaused(int seq) async {
+    while (_paused && !_stale(seq)) {
+      await _wait(200);
+    }
+  }
+
   Future<void> _play(PlayerInfo p, int seq) async {
+    if (_stale(seq)) return;
     // Decide the whole turn at once: no thinking delay.
-    final plan = planTurn(
-      board: host.board,
-      rack: host.racks[p.id]!,
-      melded: host.melded.contains(p.id),
-      firstMeld: host.rules.firstMeld,
-      level: p.level,
-      rng: rng,
-    );
+    final plan = planOverride?.call(host, p) ??
+        planTurn(
+          board: host.board,
+          rack: host.racks[p.id]!,
+          melded: host.melded.contains(p.id),
+          firstMeld: host.rules.firstMeld,
+          level: p.level,
+          rng: rng,
+        );
     if (plan.draws) {
       host.handle(p.id, const DrawAction());
       return;
     }
-    var b = host.board.copy();
-    for (final step in plan.steps) {
-      while (_paused && !_disposed) {
-        await _wait(300);
+    final start = host.board.copy();
+    var b = start;
+    for (final move in plan.moves) {
+      await _waitWhilePaused(seq);
+      if (_stale(seq)) return;
+      // Short on time with a valid table: only start moves that keep it
+      // valid at every step; otherwise end the turn now.
+      final left = host.msLeft;
+      if (left != null && left < BotTuning.safeZoneMs && b.isValid && !moveStaysValid(b, move)) break;
+      for (final step in move.steps) {
+        await _waitWhilePaused(seq);
+        if (_stale(seq)) return;
+        b = applyBotStep(b, step);
+        host.handle(p.id, PreviewAction(b));
+        await _wait(stepPauseMs(step));
+        if (_stale(seq)) return;
       }
-      if (_disposed || host.turnSeq != seq) return;
-      b = applyBotStep(b, step);
-      host.handle(p.id, PreviewAction(b));
-      await _wait(stepPauseMs(step));
     }
-    if (_disposed || host.turnSeq != seq) return;
-    final r = host.handle(p.id, CommitAction(b));
-    if (!r.ok) host.handle(p.id, const DrawAction());
+    if (_stale(seq)) return;
+    final played = b.allTiles.length > start.allTiles.length;
+    if (played && host.handle(p.id, CommitAction(b)).ok) return;
+    if (_stale(seq)) return;
+    host.handle(p.id, const DrawAction());
   }
 
   void dispose() {

@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:clock/clock.dart';
+
 import 'board.dart';
 import 'meld.dart';
 import 'rules.dart';
@@ -307,7 +309,7 @@ class GameHost {
     this.test = TestTools.off,
     this.waitForReady = false,
     int? seed,
-  }) : _rng = math.Random(seed ?? (test.enabled ? test.seed : null) ?? DateTime.now().microsecondsSinceEpoch) {
+  }) : _rng = math.Random(seed ?? (test.enabled ? test.seed : null) ?? clock.now().microsecondsSinceEpoch) {
     for (final p in players) {
       totals[p.id] = 0;
     }
@@ -366,17 +368,24 @@ class GameHost {
   void _startClock() {
     _timer?.cancel();
     if (turnSeconds <= 0) return;
-    _deadline = DateTime.now().add(Duration(seconds: turnSeconds));
+    _deadline = clock.now().add(Duration(seconds: turnSeconds));
     final seq = turnSeq;
     _timer = Timer(Duration(seconds: turnSeconds), () {
       if (seq == turnSeq && result == null) timeout();
     });
   }
 
+  /// Milliseconds left on the turn clock, or null when there is no clock
+  /// running (timer Off, paused, or waiting for a pass-and-play player).
+  int? get msLeft {
+    if (_pausedMsLeft != null || _deadline == null || _timer == null) return null;
+    return math.max(0, _deadline!.difference(clock.now()).inMilliseconds);
+  }
+
   /// Pauses the turn clock (practice and pass-and-play menus).
   void pauseClock() {
     if (_deadline == null || _timer == null) return;
-    _pausedMsLeft = _deadline!.difference(DateTime.now()).inMilliseconds;
+    _pausedMsLeft = _deadline!.difference(clock.now()).inMilliseconds;
     _timer?.cancel();
     _timer = null;
     _emit();
@@ -386,7 +395,7 @@ class GameHost {
     final left = _pausedMsLeft;
     if (left == null) return;
     _pausedMsLeft = null;
-    _deadline = DateTime.now().add(Duration(milliseconds: left));
+    _deadline = clock.now().add(Duration(milliseconds: left));
     final seq = turnSeq;
     _timer = Timer(Duration(milliseconds: math.max(0, left)), () {
       if (seq == turnSeq && result == null) timeout();
@@ -563,7 +572,7 @@ class GameHost {
   void debugShortClock() {
     final seq = turnSeq;
     _timer?.cancel();
-    _deadline = DateTime.now().add(const Duration(seconds: 3));
+    _deadline = clock.now().add(const Duration(seconds: 3));
     _timer = Timer(const Duration(seconds: 3), () {
       if (seq == turnSeq && result == null) timeout();
     });
@@ -586,7 +595,7 @@ class GameHost {
     if (_pausedMsLeft != null) {
       msLeft = _pausedMsLeft;
     } else if (_deadline != null) {
-      msLeft = math.max(0, _deadline!.difference(DateTime.now()).inMilliseconds);
+      msLeft = math.max(0, _deadline!.difference(clock.now()).inMilliseconds);
     }
     return PlayerView(
       me: me,

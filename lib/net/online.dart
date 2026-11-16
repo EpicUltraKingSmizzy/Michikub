@@ -47,6 +47,7 @@ class NetHost extends ChangeNotifier {
         _subs.add(_node!.incoming.listen(_onLink));
         opening = false;
         error = null;
+        debugPrint('Michikub room open: $code');
         notifyListeners();
         return;
       } catch (e) {

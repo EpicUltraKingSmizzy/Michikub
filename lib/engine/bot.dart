@@ -377,9 +377,13 @@ List<BotPlay> findPlays(Board board, List<int> rack, {bool rackOnly = false}) {
         if (s.fromRack) ...(s.isNewSet ? s.tiles : [s.tile!]),
     ];
     if (tiles.toSet().length != tiles.length) return false;
-    final end = applyBotPlay(board, p);
-    // Every table tile (reclaimed jokers included) must be back on the board.
-    if (!end.allTiles.toSet().containsAll(board.allTiles)) return false;
+    // No move may put a table tile into a rack: every table tile stays on the table at every step.
+    final tableTiles = board.allTiles.toSet();
+    var end = board;
+    for (final st in p.steps) {
+      end = applyBotStep(end, st);
+      if (tableTilesSentToRack(tableTiles, end).isNotEmpty) return false;
+    }
     return end.isValid;
   }).toList();
 }
@@ -597,6 +601,7 @@ class BotDriver {
       return;
     }
     final start = host.board.copy();
+    final tableTiles = host.turnStartTiles;
     var b = start;
     for (final play in plan.plays) {
       await _waitWhilePaused(seq);
@@ -609,6 +614,16 @@ class BotDriver {
         await _waitWhilePaused(seq);
         if (_stale(seq)) return;
         b = applyBotStep(b, step);
+        // The rack check: a bot never moves a tile that was on the table at the start of the
+        // turn into its rack. The planner never produces such a move; if one ever appears,
+        // reject the plan: put the table back and draw.
+        final sent = tableTilesSentToRack(tableTiles, b);
+        assert(sent.isEmpty, 'bot step would move table tiles $sent into a rack');
+        if (sent.isNotEmpty) {
+          host.handle(p.id, PreviewAction(start));
+          host.handle(p.id, const DrawAction());
+          return;
+        }
         host.handle(p.id, PreviewAction(b));
         await _wait(stepPauseMs(step));
         if (_stale(seq)) return;

@@ -225,7 +225,7 @@ void main() {
       final proposed = boardWith([
         (0, 0, [k(5), k(6), k(7)]),
       ]);
-      expect(checkTurn(start: start, proposed: proposed, rack: [r(1)], melded: true, rules: rules), contains('stay'));
+      expect(checkTurn(start: start, proposed: proposed, rack: [r(1)], melded: true, rules: rules), kTableTileToRack);
     });
     test('invalid sets are refused', () {
       final proposed = boardWith([

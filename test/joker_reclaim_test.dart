@@ -49,10 +49,10 @@ void main() {
 
   group('rules', () {
     const rules = HouseRules();
-    test('a reclaimed joker must be played again the same turn', () {
+    test('the joker can never go to a rack: a board without it is refused', () {
       final swapped = Layout.swapJoker(start, r(5), j)!;
       final err = checkTurn(start: start, proposed: swapped, rack: [r(5)], melded: true, rules: rules);
-      expect(err, 'Play the joker you took back before ending your turn.');
+      expect(err, kTableTileToRack);
     });
     test('swap + joker played elsewhere is a legal turn', () {
       var bd = Layout.swapJoker(start, r(5), j)!;
@@ -64,25 +64,25 @@ void main() {
       bd = Layout.place(bd, [b(10), b(11), b(12), j], 2, 0, merge: false);
       expect(checkTurn(start: start, proposed: bd, rack: [r(5), b(10), b(11), b(12)], melded: false, rules: rules), isNotNull);
     });
-    test('the host accepts a preview with the joker in hand, but not the commit', () {
-      final h =
-          GameHost(
-              players: const [PlayerInfo('a', 'Ann', SeatKind.human), PlayerInfo('b', 'Bob', SeatKind.human)],
-              rules: const HouseRules(turnSeconds: 0),
-              seed: 1,
-            )
-            ..firstStarter = 0
-            ..startRound();
+    test('the host refuses any preview or commit where the joker left the table', () {
+      final h = GameHost(
+        players: const [PlayerInfo('a', 'Ann', SeatKind.human), PlayerInfo('b', 'Bob', SeatKind.human)],
+        rules: const HouseRules(turnSeconds: 0),
+        seed: 1,
+      )
+        ..firstStarter = 0
+        ..startRound();
       h.board = start.copy();
       h.turnStart = start.copy();
       h.racks['a'] = [r(5), b(1), b(2), k(13)];
       h.melded.add('a');
       final swapped = Layout.swapJoker(start, r(5), j)!;
-      expect(h.handle('a', PreviewAction(swapped)).ok, true);
-      expect(h.handle('a', CommitAction(swapped)).ok, false);
-      // A missing non-joker table tile is still refused.
-      final lost = start.copy()..removeTiles([r(4)]);
-      expect(h.handle('a', PreviewAction(lost)).ok, false);
+      expect(h.handle('a', PreviewAction(swapped)).error, kTableTileToRack);
+      expect(h.handle('a', CommitAction(swapped)).error, kTableTileToRack);
+      // The shortcut's result: the joker parked alone on the table is a fine preview...
+      final parked = Layout.place(swapped, [j], 3, 0, merge: false);
+      expect(h.handle('a', PreviewAction(parked)).ok, true);
+      // ...and once it's in a valid set, a legal turn.
       final done = Layout.place(swapped, [b(1), b(2), j], 2, 0, merge: false);
       expect(h.handle('a', CommitAction(done)).ok, true);
       expect(h.racks['a'], [k(13)]);

@@ -239,6 +239,21 @@ class PlayerView {
 
 /// Checks a proposed end-of-turn board. Pure function, shared by the host
 /// and by the client (to show the player what's wrong before sending).
+/// The only way a tile reaches a rack is a draw from the pile. Any other move that would put
+/// a tile into a rack must pass this check: "was this tile on the table at the start of the
+/// turn?" If so, the move is rejected. Tiles placed from the rack this turn may come back.
+const kTableTileToRack = 'Tiles that were on the table at the start of the turn can\'t go into a rack.';
+
+/// Was [tile] on the table at the start of the turn ([turnStartTiles] is the turn's snapshot)?
+bool wasOnTableAtTurnStart(Set<int> turnStartTiles, int tile) => turnStartTiles.contains(tile);
+
+/// The table tiles from the start of the turn that [board] no longer has, i.e. that a move
+/// would have put into a rack. Empty when the board is allowed.
+Set<int> tableTilesSentToRack(Set<int> turnStartTiles, Board board) {
+  final now = board.allTiles.toSet();
+  return {for (final t in turnStartTiles) if (!now.contains(t)) t};
+}
+
 String? checkTurn({
   required Board start,
   required Board proposed,
@@ -251,11 +266,7 @@ String? checkTurn({
   if (newTiles.toSet().length != newTiles.length) return 'A tile appears twice.';
   final startSet = startTiles.toSet();
   final newSet = newTiles.toSet();
-  if (!newSet.containsAll(startSet)) {
-    final missing = startSet.difference(newSet);
-    if (missing.every(isJoker)) return 'Play the joker you took back before ending your turn.';
-    return 'Tiles already on the table must stay on the table.';
-  }
+  if (tableTilesSentToRack(startSet, proposed).isNotEmpty) return kTableTileToRack;
   final played = newSet.difference(startSet);
   final rackSet = rack.toSet();
   if (!rackSet.containsAll(played)) return 'Those tiles are not in your rack.';
@@ -299,7 +310,18 @@ class GameHost {
   final Set<String> disconnected = {};
   List<int> pile = [];
   Board board = Board.empty();
-  Board turnStart = Board.empty();
+  Board _turnStart = Board.empty();
+  Set<int> _turnStartTiles = {};
+
+  /// The table when the current turn began (setting it also takes the tile-id snapshot).
+  Board get turnStart => _turnStart;
+  set turnStart(Board b) {
+    _turnStart = b;
+    _turnStartTiles = b.allTiles.toSet();
+  }
+
+  /// Snapshot of the tile ids on the table when the current turn began.
+  Set<int> get turnStartTiles => _turnStartTiles;
   Board? preview;
   int current = 0;
   int turnSeq = 0;
@@ -467,9 +489,9 @@ class GameHost {
       case PreviewAction(:final board):
         // Only accept previews that keep table tiles and use the player's rack.
         final tiles = board.allTiles.toSet();
-        // A table joker may be missing mid-turn: it was reclaimed and is in the player's hand
-        // until it's played again (the commit check makes sure it is).
-        if (!turnStart.allTiles.every((t) => tiles.contains(t) || isJoker(t))) return const ActionResult.fail('bad preview');
+        // Every move is checked (local players, bots and online guests alike): no table tile
+        // from the start of the turn may have gone into a rack.
+        if (tableTilesSentToRack(turnStartTiles, board).isNotEmpty) return const ActionResult.fail(kTableTileToRack);
         final rack = racks[playerId]!.toSet();
         final startSet = turnStart.allTiles.toSet();
         if (!tiles.every((t) => startSet.contains(t) || rack.contains(t))) return const ActionResult.fail('bad preview');

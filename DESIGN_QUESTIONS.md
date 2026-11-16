@@ -15,7 +15,17 @@ Most numbers live in a small set of constants: `BotTuning` (lib/engine/bot.dart)
 7. **Can a set be all jokers (for example 3 jokers with 3 or 4 jokers in play)?** No. Every set needs at least one numbered tile. *Why:* otherwise the set has no defined value.
 8. **How does a set like `5 joker joker` count?** It counts as the higher-scoring valid reading: the run 5 6 7 (18) beats the group 5 5 5 (15). *Why:* this matters for reaching the first-meld minimum and favours the player.
 9. **What does the first meld allow?** It may use only tiles from your own rack, it must reach the minimum (30 by default), and you can't touch the table that turn. Once you have melded, you can rearrange freely on later turns. With the first-meld rule set to Off, there's no minimum and you can rearrange from turn 1. *Why:* these are the classic rules, and Off is the simplest house variant.
-10. **Can you take a joker back off the table?** *(Changed in v0.1.4.)* Yes, the classic way: after your first meld, drag (or tap, then tap the joker) the tile the joker stands for from your rack onto the joker. Your tile takes the joker's exact spot and the joker goes to your rack. You must play that joker again in the same turn: End turn is refused ("Play the joker you took back before ending your turn.") until it's back on the table, and Reset puts everything back. In a group of 3 with a joker, either missing colour can take its place. Table jokers can still be moved around the table like any tile. Bots do it too, in honest moves (see #33), and the joker never leaves the table: they move the joker to its new place, then attach the rack tile into the gap it left, which rejoins the set. Examples: the group 6-6-J plus the missing-colour 6 and a 10-11 in the rack takes 3 moves (put down 10-11, move the J onto them, add the 6). The run 7-8-J-10 plus a 9 (and a rack pair the J completes) also takes 3 moves (pair, J, then the 9 into the gap, which rejoins 7-8-9-10). If the J can go on the end of another table set instead, it's 2 moves. A joker at either end of a run works the same way. *Why:* it's the classic rule, and a reclaimed joker can never stay in a rack.
+10. **Can you take a joker back off the table?** *(Changed in v0.1.4, then v0.1.5.)* You can reuse a table joker after your first meld, but it never goes into your rack (see #64). There are two ways, and the result is the same:
+    - **The long way:** move the joker (drag it, or select it and tap) to a new spot or onto another set, then put the tile it stood for into the gap it left. That rejoins the set.
+    - **The shortcut:** drop (or tap) the matching rack tile onto the joker. Your tile takes the joker's exact spot, and the joker hops to a free spot on the table, already selected, for you to place: tap a set to attach it, tap a spot, or drag it.
+
+    Either way the table must be valid when you end the turn, so the joker has to end up in a valid set. Reset undoes everything. In a group of 3 with a joker, either missing colour can take its place. Bots do the same in honest moves (see #33): they move the joker to its new place, then attach the rack tile into the gap.
+    - The group 6-6-J plus the missing-colour 6 and a 10-11 in the rack takes 3 moves (put down 10-11, move the J onto them, add the 6).
+    - The run 7-8-J-10 plus a 9 (and a rack pair the J completes) also takes 3 moves.
+    - If the J can join the end of another table set, it takes 2 moves.
+    - A joker at either end of a run works the same way.
+
+    *Why:* it matches the bots and the rule in #64, and the classic swap is still one drop away.
 11. **Can you draw after putting tiles down?** No. The button says Draw only while you haven't played anything this turn. Press Reset first if you want to draw instead. *Why:* this matches the classic rules (play or draw, not both).
 12. **What happens on timeout?** As agreed: a valid board ends the turn normally. Otherwise the board resets, the tiles return to the rack, the player draws as if passing, and a message says "*Name* ran out of time." *Why:* this follows your spec, and the message explains the sudden change.
 13. **What does Pass do when the pile is empty?** The button reads "Pass" and draws nothing. *Why:* it makes it clear that nothing will be drawn.
@@ -104,3 +114,10 @@ Most numbers live in a small set of constants: `BotTuning` (lib/engine/bot.dart)
     - Tap the selection again, or the rack background: deselected.
 
     This works for rack selections any time and for table sets on your turn. *Why:* your request; it's easier than a long drag on a small screen.
+64. **Can a tile go back into a rack?** *(New in v0.1.5, your rule.)* Only a tile you put down from your rack this turn. Every move into a rack, other than drawing from the pile, is checked: "was this tile on the table at the start of the turn?" (a snapshot of tile ids taken when the turn begins). If yes, the move is rejected. You'll see a red flash and the tile snaps back, with "Tiles that were on the table at the start of the turn can't go into a rack."
+    - This covers dragging, tapping, long-press selections and whole sets dropped on the rack.
+    - The game engine checks every preview and End turn, the same for Practice, Pass-and-play, bots, and moves received from online guests. A guest's phone can't sneak one through.
+    - Bots never plan such a move, and the bot player checks each step before showing it.
+    - Reset isn't a move: it puts back the table as it was at the start of the turn.
+
+    *Why:* table tiles belong to everyone; only the pile feeds racks.

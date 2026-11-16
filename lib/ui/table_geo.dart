@@ -39,6 +39,10 @@ class TableGeo {
   late final Rect pileRect;
   late final Rect makeSpaceRect;
   late final double shownCols;
+
+  /// The whole columns in view: [firstCol]..[lastCol], centred on the board's middle (where
+  /// end-of-turn tidying gathers the sets).
+  late final int firstCol, lastCol;
   late final int shownRows;
   late final List<Rect?> _rackRects;
 
@@ -100,13 +104,28 @@ class TableGeo {
     shownCols = math.min(rowWidth.toDouble(), boardRect.width / cellW);
     shownRows = math.max(1, math.min(boardRows, ((boardRect.height + tileH * gapF) / rowPitch + 0.01).floor()));
     final usedH = math.max(this.viewRows, shownRows.toDouble()) * rowPitch - tileH * gapF;
+    final whole = math.min(rowWidth, (shownCols + 1e-6).floor());
+    firstCol = firstColFor(whole);
+    lastCol = firstCol + whole - 1;
     boardOrigin = Offset(
-      boardRect.left + (boardRect.width - shownCols * cellW) / 2,
+      boardRect.left + (boardRect.width - whole * cellW) / 2 - firstCol * cellW,
       boardRect.top + math.max(0, (boardRect.height - usedH) / 2),
     );
     final pw = (h * .06).clamp(22.0, 34.0);
     // The pile sits in the top-right corner, clear of the side seats.
     pileRect = Rect.fromLTWH(w - pw - 62, 6, pw, pw * 1.38);
+  }
+
+  /// First column in view when [n] whole columns are shown, centred on the board.
+  static int firstColFor(int n) => (rowWidth - n.clamp(1, rowWidth)) ~/ 2;
+
+  /// Fewest columns (at least [minViewCols]) whose centred window shows columns [from]..[to].
+  static int colsToShow(int from, int to) {
+    for (var n = minViewCols.toInt(); n < rowWidth; n++) {
+      final f = firstColFor(n);
+      if (f <= from && f + n - 1 >= to) return n;
+    }
+    return rowWidth;
   }
 
   Rect cellRect(int row, int col) => Rect.fromLTWH(
@@ -118,7 +137,7 @@ class TableGeo {
     if (p.dx < boardRect.left - pad || p.dx > boardRect.right + pad) return null;
     if (p.dy < boardRect.top - pad || p.dy > boardRect.bottom + pad) return null;
     final fx = (p.dx - boardOrigin.dx) / cellW;
-    final col = fx.floor().clamp(0, math.max(0, shownCols.floor() - 1)).toInt();
+    final col = fx.floor().clamp(firstCol, lastCol).toInt();
     final row = ((p.dy - boardOrigin.dy + rowPitch * .1) / rowPitch).floor().clamp(0, math.max(0, shownRows - 1)).toInt();
     return (row: row, col: col, frac: fx - fx.floor());
   }

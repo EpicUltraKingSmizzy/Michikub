@@ -152,8 +152,9 @@ void main() {
               steps++;
               expect(tableTilesSentToRack(h.turnStartTiles, bd), isEmpty, reason: 'seed $seed: ${st.type}');
               expect(h.handle(p.id, PreviewAction(bd)).ok, true);
+              if (h.result != null) break; // out of tiles with a valid table: the round ended
             }
-            expect(h.handle(p.id, CommitAction(bd)).ok, true);
+            if (h.result == null) expect(h.handle(p.id, CommitAction(bd)).ok, true);
           }
           turns++;
         }

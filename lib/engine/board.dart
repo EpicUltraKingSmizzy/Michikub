@@ -257,6 +257,119 @@ class Layout {
     return b;
   }
 
+  /// Drag-and-drop onto a set: [tiles] dropped into the set holding [setTile] at [index].
+  /// If the set would be valid with them there, they go there. If not, but the set is valid
+  /// with them at one end, they go to that end instead (the end nearer [index] if both work):
+  /// a 4 dropped into the middle of 5-6-7-8 makes 4-5-6-7-8, and 1-2-3-4 dropped onto
+  /// 5-6-7-8 makes 1-2-3-4-5-6-7-8. With no valid placement they go where they were dropped.
+  /// The set slides away from the board edge if it needs room ([insertInto]).
+  static Board dropInto(Board board, List<int> tiles, int setTile, int index) {
+    final b = board.copy()..removeTiles(tiles);
+    final blk = b.blockOf(setTile);
+    if (blk == null) return b;
+    index = index.clamp(0, blk.length);
+    final there = [...blk.tiles.sublist(0, index), ...tiles, ...blk.tiles.sublist(index)];
+    if (!isValidMeld(there)) {
+      final end = attachEnd(blk.tiles, tiles, index);
+      if (end != null) return insertInto(b, tiles, setTile, end);
+    }
+    return insertInto(b, tiles, setTile, index);
+  }
+
+  /// End-of-turn tidying, run by the host after every played turn, so every device gets the
+  /// same table. In order:
+  ///  1. Row collapse, while more than 3 rows hold tiles: a set alone in its row moves into an
+  ///     adjacent row that has tiles, at the same columns or 1 column left or right, if it fits
+  ///     with a space on both sides.
+  ///  2. Gap collapse, while the rows from the first to the last used one span more than 3 and
+  ///     one between them is empty: the outer rows on the side nearer that empty row move one
+  ///     row inward (rows 1, 3, 4 used: row 1 moves down to row 2).
+  ///  3. Compacting: in every row the sets move toward the middle, in the same left-to-right
+  ///     order, with exactly 1 empty space between them.
+  ///  4. Empty rows above the top set are removed (the view zooms in); the board keeps
+  ///     [LayoutTuning.startRows] rows.
+  static Board tidy(Board board) {
+    final b = board.copy();
+    if (b.usedRows.isEmpty) return b;
+    _collapseLoneSets(b);
+    _collapseGaps(b);
+    for (var r = 0; r < b.rowCount; r++) {
+      _centreRow(b, r);
+    }
+    while (b.rowCount > 1 && b.isEmptyRow(0)) {
+      b.rows.removeAt(0);
+    }
+    b.ensureRows(LayoutTuning.startRows);
+    b.trim();
+    return b;
+  }
+
+  static void _collapseLoneSets(Board b) {
+    var moved = true;
+    while (moved && b.usedRows.length > 3) {
+      moved = false;
+      search:
+      for (final shift in const [0, -1, 1]) {
+        for (final r in b.usedRows) {
+          final row = b.blocksInRow(r);
+          if (row.length != 1) continue;
+          final blk = row.single;
+          for (final adj in [r - 1, r + 1]) {
+            if (adj < 0 || adj >= b.rowCount || b.isEmptyRow(adj)) continue;
+            b.clearBlock(blk);
+            if (b.fits(adj, blk.start + shift, blk.length)) {
+              b.writeBlock(blk.at(adj, blk.start + shift));
+              moved = true;
+              break search;
+            }
+            b.writeBlock(blk);
+          }
+        }
+      }
+    }
+  }
+
+  static void _collapseGaps(Board b) {
+    while (true) {
+      final used = b.usedRows;
+      if (used.isEmpty) return;
+      final first = used.first, last = used.last;
+      if (last - first + 1 <= 3) return;
+      int? gap;
+      for (var r = first + 1; r < last; r++) {
+        if (!b.isEmptyRow(r)) continue;
+        if (gap == null || math.min(r - first, last - r) < math.min(gap - first, last - gap)) gap = r;
+      }
+      if (gap == null) return;
+      if (gap - first <= last - gap) {
+        // Rows above the gap move down one.
+        for (var r = gap; r > first; r--) {
+          b.rows[r] = b.rows[r - 1];
+        }
+        b.rows[first] = List<int>.filled(Board.width, -1);
+      } else {
+        for (var r = gap; r < last; r++) {
+          b.rows[r] = b.rows[r + 1];
+        }
+        b.rows[last] = List<int>.filled(Board.width, -1);
+      }
+    }
+  }
+
+  static void _centreRow(Board b, int r) {
+    final blocks = b.blocksInRow(r);
+    if (blocks.isEmpty) return;
+    final span = blocks.fold<int>(0, (s, x) => s + x.length) + blocks.length - 1;
+    var c = math.max(0, (Board.width - span) ~/ 2);
+    for (var i = 0; i < Board.width; i++) {
+      b.rows[r][i] = -1;
+    }
+    for (final blk in blocks) {
+      b.writeBlock(blk.at(r, c));
+      c += blk.length + 1;
+    }
+  }
+
   /// Splits the set just before [tile]; the right part moves 1 space away.
   static Board split(Board board, int tile) {
     final blk = board.blockOf(tile);

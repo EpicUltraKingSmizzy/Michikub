@@ -41,4 +41,16 @@ void main() {
     // Dropping just left of the first tile after the gap inserts before it.
     expect(g.rackIndexAt(Offset(afterGap.left + 2, afterGap.center.dy)), 13);
   });
+
+  test('the columns in view are centred on the board (where tidying gathers sets)', () {
+    final g = TableGeo(phone, boardRows: 5, rackEntries: tiles(14), seatCount: 4, viewRows: 3, viewCols: 16);
+    expect(g.firstCol + g.lastCol, closeTo(26, 1), reason: 'centred on column 13');
+    // The middle column sits in the middle of the board area.
+    expect(g.cellRect(0, 13).center.dx, closeTo(g.boardRect.center.dx, g.cellW));
+    expect(g.cellAt(Offset(g.boardRect.left + 1, g.cellRect(0, 0).center.dy))!.col, g.firstCol);
+    expect(TableGeo.colsToShow(10, 16), 16);
+    expect(TableGeo.colsToShow(0, 26), 27);
+    final n = TableGeo.colsToShow(2, 14);
+    expect(TableGeo.firstColFor(n), lessThanOrEqualTo(2));
+  });
 }

@@ -496,6 +496,14 @@ class GameHost {
         final startSet = turnStart.allTiles.toSet();
         if (!tiles.every((t) => startSet.contains(t) || rack.contains(t))) return const ActionResult.fail('bad preview');
         preview = board.copy();
+        // Out of tiles with a valid table: the round ends now, no need to press End turn.
+        final played = tiles.difference(startSet);
+        if (racks[playerId]!.every(played.contains) &&
+            checkTurn(start: turnStart, proposed: board, rack: racks[playerId]!, melded: melded.contains(playerId), rules: rules) ==
+                null) {
+          _commit(playerId, board);
+          return const ActionResult.ok();
+        }
         _emit();
         return const ActionResult.ok();
       case CommitAction(:final board):
@@ -517,7 +525,9 @@ class GameHost {
   void _commit(String p, Board proposed) {
     final played = proposed.allTiles.toSet().difference(turnStart.allTiles.toSet());
     racks[p]!.removeWhere(played.contains);
-    board = proposed.copy()..trim();
+    // End-of-turn tidying (Layout.tidy), done here on the host so every device gets the same table.
+    board = Layout.tidy(proposed);
+    preview = null;
     melded.add(p);
     _passesWithEmptyPile = 0;
     if (racks[p]!.isEmpty) {

@@ -29,8 +29,8 @@ class TableTuning {
   /// How long the "`Name` starts" banner shows at the start of each round.
   static const starterBannerMs = 2200;
 
-  /// Empty columns kept in view right of the widest set (see _boardView).
-  static const spareCols = 3;
+  /// Empty columns kept in view beside the outermost sets, on each side (see _boardView).
+  static const spareCols = 2;
 }
 
 enum _Src { pile, seat }
@@ -451,7 +451,7 @@ class _GameScreenState extends State<GameScreen> {
     if (row < tmp.rowCount && tmp.rows[row][col] >= 0) {
       final blk = tmp.blockOf(tmp.rows[row][col])!;
       final idx = (col - blk.start) + (frac > .5 ? 1 : 0);
-      return Layout.insertInto(tmp, tiles, blk.tiles.first, idx);
+      return Layout.dropInto(tmp, tiles, blk.tiles.first, idx);
     }
     return Layout.place(tmp, tiles, row, col);
   }
@@ -823,26 +823,34 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
-  /// How much of the board to show: 3 rows and a narrow width to start, growing (rows and
-  /// columns independently) as sets spread down or across, so tiles start large. Rows grow
+  /// How much of the board to show: 3 rows and a narrow, centred width to start, growing (rows
+  /// and columns independently) as sets spread down or across, so tiles start large. Rows grow
   /// only when a set sits below the rows in view (Add row, auto-placement), never just
-  /// because a tile landed in the last visible row: every row keeps the same cell size.
-  /// A few empty columns to the right stay in view so sets can be extended.
+  /// because a tile landed in the last visible row: every row keeps the same cell size. When
+  /// the bottom rows empty the view zooms back in; end-of-turn tidying removes empty rows at
+  /// the top. Columns: the view is centred on the board's middle and keeps
+  /// [TableTuning.spareCols] empty columns beside the outermost sets on each side, so sets
+  /// can be extended either way. The view never changes during a drag.
   ({double rows, double cols}) _boardView(Board b) {
+    final frozen = _view;
+    if (_drag != null && frozen != null) return frozen;
     final used = b.usedRows;
-    var maxCol = -1;
+    var minCol = Board.width, maxCol = -1;
     for (final r in used) {
-      for (var c = Board.width - 1; c > maxCol; c--) {
-        if (b.rows[r][c] >= 0) {
-          maxCol = c;
-          break;
-        }
+      for (final blk in b.blocksInRow(r)) {
+        minCol = math.min(minCol, blk.start);
+        maxCol = math.max(maxCol, blk.end - 1);
       }
     }
     final rows = math.max(TableGeo.minViewRows, (used.isEmpty ? 0 : used.last + 1).toDouble());
-    final cols = math.max(TableGeo.minViewCols, (maxCol + 1 + TableTuning.spareCols).toDouble());
-    return (rows: rows, cols: cols);
+    final cols = maxCol < 0
+        ? TableGeo.minViewCols
+        : TableGeo.colsToShow(math.max(0, minCol - TableTuning.spareCols), math.min(Board.width - 1, maxCol + TableTuning.spareCols))
+            .toDouble();
+    return _view = (rows: rows, cols: cols);
   }
+
+  ({double rows, double cols})? _view;
 
   Widget _starterBannerWidget(TableGeo g, String text) => Positioned(
         left: 0,

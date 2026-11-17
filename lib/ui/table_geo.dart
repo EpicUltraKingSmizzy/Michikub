@@ -50,6 +50,14 @@ class TableGeo {
   /// stays centred on the board when it can, and shifts just enough to show them all.
   final int? contentFrom, contentTo;
 
+  /// Height of the name plate text under each side seat's avatar (one line, or two for a
+  /// bot's "Name (Level)"). The seat's face-down rack starts below it.
+  final Map<SeatPos, double> sidePlateH;
+  static const defaultPlateH = 15.0;
+
+  /// Height of the pile count text ("48" over "IN PILE") beside the pile.
+  final double pileLabelH;
+
   TableGeo(this.size,
       {required this.boardRows,
       required this.rackEntries,
@@ -57,14 +65,16 @@ class TableGeo {
       double? viewRows,
       double? viewCols,
       this.contentFrom,
-      this.contentTo})
+      this.contentTo,
+      this.sidePlateH = const {},
+      this.pileLabelH = 34})
       : viewRows = (viewRows ?? minViewRows).clamp(minViewRows, math.max(minViewRows, boardRows.toDouble())),
         viewCols = (viewCols ?? minViewCols).clamp(minViewCols, rowWidth.toDouble()) {
     final rackCount = math.max(1, rackEntries.length);
     final w = size.width, h = size.height;
     topH = (h * .12).clamp(42.0, 66.0);
     // Side seat columns: just wide enough for an avatar, its count badge and two columns of backs.
-    sideW = (w * .07).clamp(56.0, 80.0);
+    sideW = sideWFor(w);
     ctrlW = (w * .21).clamp(150.0, 250.0);
     avatar = (h * .1).clamp(30.0, 48.0);
     backW = (h * .024).clamp(7.0, 12.0);
@@ -121,6 +131,9 @@ class TableGeo {
     pileRect = Rect.fromLTWH(w - pw - 62, 6, pw, pw * 1.38);
   }
 
+  /// Width of the side seat columns for a screen [w] wide.
+  static double sideWFor(double w) => (w * .07).clamp(56.0, 80.0);
+
   /// First column in view when [n] whole columns are shown, centred on the board.
   static int firstColFor(int n) => (rowWidth - n.clamp(1, rowWidth)) ~/ 2;
 
@@ -168,7 +181,9 @@ class TableGeo {
       case SeatPos.left:
         return Offset(sideW / 2, topH + avatar / 2 - 4);
       case SeatPos.right:
-        return Offset(w - sideW / 2, topH + avatar / 2 - 4);
+        // A few pixels lower than the left seat, and always below the pile and its count
+        // (the count badge pokes 6 px above the avatar).
+        return Offset(w - sideW / 2, math.max(topH + avatar / 2 + 2, pileBottom + 4 + 6 + avatar / 2));
       case SeatPos.top:
         return Offset(w / 2 - backLineLen / 2 - avatar * .7, avatar / 2 + 6);
     }
@@ -176,24 +191,42 @@ class TableGeo {
 
   double get backLineLen => 10 * (backW + 2) + 4;
 
+  /// Bottom of the pile and its count text.
+  double get pileBottom => pileRect.top + math.max(pileRect.height + 4, pileLabelH);
+
+  /// Top of a side seat's name plate text.
+  double plateTop(SeatPos s) => seatCenter(s).dy + avatar / 2 + 3;
+
+  /// Where a side seat's face-down rack starts: below its whole name plate.
+  double backsTop(SeatPos s) => plateTop(s) + (sidePlateH[s] ?? defaultPlateH) + 4;
+
+  /// How much a side seat's face-down lines shrink (1 = full size) so 10 tiles fit between
+  /// the name plate and the bottom corners (the controls on the right, your name and avatar
+  /// on the left; both fit in [ctrlH]). The rack in the middle doesn't reach the side columns.
+  double backsScale(SeatPos s) {
+    final natural = 10 * (backH + 2) + 2;
+    return ((size.height - ctrlH - 4 - backsTop(s)) / natural).clamp(0.3, 1.0);
+  }
+
   /// Face-down indicator tile [i] of [n] for a seat: lines of 10 with a gap
   /// after 5; across for the top seat, downward for side seats; lines
   /// squeeze together past 20.
   Rect backRect(SeatPos s, int i, int n) {
     final vert = s != SeatPos.top;
-    final a = vert ? backH : backW, c = vert ? backW : backH;
+    final f = vert ? backsScale(s) : 1.0;
+    final a = (vert ? backH : backW) * f, c = vert ? backW : backH;
     final k = i % 10;
-    final along = k * (a + 2) + (k >= 5 ? 4 : 0);
+    final along = k * (a + 2 * f) + (k >= 5 ? 4 * f : 0);
     final step = n > 20 ? c * .62 : c + 3;
     final cross = (i ~/ 10) * step;
     final center = seatCenter(s);
     switch (s) {
       case SeatPos.left:
         final x0 = center.dx - (n > 10 ? (n > 20 ? c * 1.1 : c + 1.5) : c / 2);
-        return Rect.fromLTWH(x0 + cross, center.dy + avatar / 2 + 22 + along, c, a);
+        return Rect.fromLTWH(x0 + cross, backsTop(s) + along, c, a);
       case SeatPos.right:
         final x0 = center.dx + (n > 10 ? (n > 20 ? c * 1.1 : c + 1.5) : c / 2) - c;
-        return Rect.fromLTWH(x0 - cross, center.dy + avatar / 2 + 22 + along, c, a);
+        return Rect.fromLTWH(x0 - cross, backsTop(s) + along, c, a);
       case SeatPos.top:
         return Rect.fromLTWH(center.dx + avatar * .7 + 10 + along, 6 + cross, a, c);
     }

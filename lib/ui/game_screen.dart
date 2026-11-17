@@ -860,7 +860,13 @@ class _GameScreenState extends State<GameScreen> {
             child: LayoutBuilder(builder: (ctx, cons) {
               final rack = _rackShown;
               final view = _boardView(_shown);
+              // Measured the way Text lays them out: the ambient style (its line height) and text scale.
+              final scaler = MediaQuery.textScalerOf(ctx);
+              final base = DefaultTextStyle.of(ctx).style;
+              final sideW = TableGeo.sideWFor(cons.biggest.width);
               final g = TableGeo(cons.biggest,
+                  sidePlateH: _sidePlateHeights(pv, sideW, base, scaler),
+                  pileLabelH: _pileLabelHeight(base, scaler),
                   boardRows: _shown.rowCount,
                   rackEntries: rack,
                   seatCount: pv.seats.length,
@@ -1159,7 +1165,7 @@ class _GameScreenState extends State<GameScreen> {
           _countBadge(shown),
         ]),
       ));
-      final label = '${sv.info.name}${sv.connected ? '' : ' (offline)'}${current ? '  ${_clockText()}' : ''}';
+      final label = _seatLabel(sv, current ? _clockText() : null);
       if (p == SeatPos.top) {
         out.add(Positioned(
           left: c.dx - a / 2 - 120,
@@ -1171,15 +1177,57 @@ class _GameScreenState extends State<GameScreen> {
         out.add(Positioned(
           left: c.dx - g.sideW / 2,
           width: g.sideW,
-          top: c.dy + a / 2 + 3,
-          child: Text(label, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: MK.body(11, weight: FontWeight.w600)),
+          top: g.plateTop(p),
+          child: Text(label, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: _sidePlateStyle),
         ));
       }
       for (var i = 0; i < shown; i++) {
-        out.add(Positioned.fromRect(rect: g.backRect(p, i, sv.count), child: GoldBack(width: g.backW, height: g.backH)));
+        final r = g.backRect(p, i, sv.count);
+        out.add(Positioned.fromRect(rect: r, child: GoldBack(width: r.width, height: r.height)));
       }
     }
     return out;
+  }
+
+  /// A seat's name plate: name, offline mark, and the turn clock ([clock]) when it's their turn.
+  static String _seatLabel(SeatView sv, String? clock) =>
+      '${sv.info.name}${sv.connected ? '' : ' (offline)'}${clock != null && clock.isNotEmpty ? '  $clock' : ''}';
+
+  static final _sidePlateStyle = MK.body(11, weight: FontWeight.w600);
+
+  /// Height of each side seat's name plate (up to 2 lines), so its face-down rack starts below
+  /// it. Measured with room for the turn clock when there is one, so the rack doesn't jump
+  /// when their turn starts.
+  Map<SeatPos, double> _sidePlateHeights(PlayerView pv, double width, TextStyle base, TextScaler scaler) {
+    final out = <SeatPos, double>{};
+    final pos = _seatPositions(pv);
+    final timed = pv.rules.turnSeconds > 0 || _deadline != null;
+    for (final sv in pv.seats) {
+      final p = pos[sv.info.id];
+      if (p == null || p == SeatPos.top) continue;
+      final tp = TextPainter(
+        text: TextSpan(text: _seatLabel(sv, timed ? '0:00' : null), style: base.merge(_sidePlateStyle)),
+        textAlign: TextAlign.center,
+        textDirection: TextDirection.ltr,
+        textScaler: scaler,
+        maxLines: 2,
+        ellipsis: '…',
+      )..layout(maxWidth: width);
+      out[p] = tp.height;
+      tp.dispose();
+    }
+    return out;
+  }
+
+  /// Height of the pile's count text ("48" over "IN PILE").
+  static double _pileLabelHeight(TextStyle base, TextScaler scaler) {
+    var h = 0.0;
+    for (final (t, st) in [('88', MK.body(17, weight: FontWeight.w700)), ('IN PILE', MK.body(8, color: MK.gold, weight: FontWeight.w700))]) {
+      final tp = TextPainter(text: TextSpan(text: t, style: base.merge(st)), textDirection: TextDirection.ltr, textScaler: scaler)..layout();
+      h += tp.height;
+      tp.dispose();
+    }
+    return h;
   }
 
   Widget _brand(TableGeo g) => Positioned(

@@ -10,7 +10,10 @@ class ResultsOverlay extends StatelessWidget {
   final GameSession session;
   final PlayerView view;
   final VoidCallback onLeave;
-  const ResultsOverlay({super.key, required this.session, required this.view, required this.onLeave});
+
+  /// Hides the panel so the final table shows (a Show results button brings it back).
+  final VoidCallback? onMinimize;
+  const ResultsOverlay({super.key, required this.session, required this.view, required this.onLeave, this.onMinimize});
 
   @override
   Widget build(BuildContext context) {
@@ -27,7 +30,18 @@ class ResultsOverlay extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
           child: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.emoji_events, color: MK.goldLight, size: 34),
+              Stack(alignment: Alignment.center, children: [
+                Icon(Icons.emoji_events, color: MK.goldLight, size: 34),
+                if (onMinimize != null)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: onMinimize,
+                      icon: const Icon(Icons.expand_more, size: 18),
+                      label: const Text('See the table'),
+                    ),
+                  ),
+              ]),
               Text(iWon ? 'You win round ${view.round}!' : '${winner.name} wins round ${view.round}', style: MK.title(24)),
               Text(r.reason == 'out' ? '${winner.name} played every tile.' : 'The pile ran out; the lowest rack wins.',
                   style: MK.body(12, color: MK.gold)),

@@ -278,6 +278,8 @@ class Layout {
     if (isValidMeld(at(index))) return insertInto(b, tiles, setTile, index);
     final end = attachEnd(blk.tiles, tiles, index);
     if (end != null) return insertInto(b, tiles, setTile, end);
+    final split = splitDuplicate(b, tiles, setTile);
+    if (split != null) return split;
     if (!isValidMeld(blk.tiles)) {
       if (isCompatible(at(index))) return insertInto(b, tiles, setTile, index);
       final front = isCompatible(at(0)), back = isCompatible(at(blk.length));
@@ -288,6 +290,36 @@ class Layout {
     }
     if (col == null) return insertInto(b, tiles, setTile, index);
     return shuntAside(b, tiles, setTile, col);
+  }
+
+  /// Is there a valid place for [tiles] in the set holding [setTile]: where dropped ([index])
+  /// or at one end? (The joker swap shortcut is only tried when there isn't.)
+  static bool hasValidFit(Board board, List<int> tiles, int setTile, int index) {
+    final b = board.copy()..removeTiles(tiles);
+    final blk = b.blockOf(setTile);
+    if (blk == null) return false;
+    index = index.clamp(0, blk.length);
+    if (isValidMeld([...blk.tiles.sublist(0, index), ...tiles, ...blk.tiles.sublist(index)])) return true;
+    return attachEnd(blk.tiles, tiles, index) != null;
+  }
+
+  /// A tile added to a run that already has its number: the run splits there and the tile
+  /// joins the second part. A yellow 4 added to yellow 3-4-5-6 makes 3-4 and 4-5-6. Only
+  /// for a single numbered tile of the run's colour and a valid run holding that number as a
+  /// real tile (a joker standing for it is the joker swap's job). Returns null otherwise.
+  static Board? splitDuplicate(Board board, List<int> tiles, int setTile) {
+    if (tiles.length != 1 || isJoker(tiles.single)) return null;
+    final t = tiles.single;
+    final b = board.copy()..removeTiles(tiles);
+    final blk = b.blockOf(setTile);
+    if (blk == null || analyzeMeld(blk.tiles)?.kind != MeldKind.run) return null;
+    final i = blk.tiles.indexWhere((x) => !isJoker(x) && tileNumber(x) == tileNumber(t));
+    if (i < 0 || tileColor(blk.tiles[i]) != tileColor(t)) return null;
+    final left = blk.tiles.sublist(0, i + 1);
+    final right = [t, ...blk.tiles.sublist(i + 1)];
+    b.clearBlock(blk);
+    b.writeBlock(Block(blk.row, blk.start, left));
+    return place(b, right, blk.row, blk.start + left.length + 1, merge: false);
   }
 
   /// [tiles] are set down as their own set at column [col] of the row holding [setTile], and

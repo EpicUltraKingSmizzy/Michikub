@@ -22,6 +22,9 @@ import 'tiles_view.dart';
 class TableTuning {
   static const moveMs = 240;
   static const flyMs = 1100;
+
+  /// How long the white "new on the table" glow takes to fade in or out.
+  static const newGlowFadeMs = 700;
   static const flashMs = 650;
   static const shineMs = 750;
   static const toastMs = 2600;
@@ -29,8 +32,6 @@ class TableTuning {
   /// How long the "`Name` starts" banner shows at the start of each round.
   static const starterBannerMs = 2200;
 
-  /// Empty columns kept in view beside the outermost sets, on each side (see _boardView).
-  static const spareCols = 2;
 }
 
 enum _Src { pile, seat }
@@ -101,6 +102,17 @@ class _GameScreenState extends State<GameScreen> {
   bool _menuOpen = false;
   TableGeo? _geo;
 
+  /// Per seat (pass-and-play has several on one phone): the table's tiles when that player's
+  /// turn last ended, this round. Tiles on the table now that aren't in it get the white
+  /// "new since your last turn" glow.
+  final Map<String, ({int round, Set<int> tiles})> _tilesAtMyTurnEnd = {};
+
+  /// The turn (turnSeq) in which I drew or played, which ends the white glow for that turn.
+  int _glowDoneSeq = -1;
+
+  /// The results panel is minimised to show the final table.
+  bool _resultsHidden = false;
+
   @override
   void initState() {
     super.initState();
@@ -144,9 +156,18 @@ class _GameScreenState extends State<GameScreen> {
       _drag = null;
     }
     final order = _rackOrders.putIfAbsent(nv.me, () => []);
-    order.removeWhere((t) => !isRackGap(t) && !nv.rack.contains(t));
+    // Tiles that left the rack (played) leave their slot blank: the rack isn't packed.
+    for (var i = 0; i < order.length; i++) {
+      if (!isRackGap(order[i]) && !nv.rack.contains(order[i])) order[i] = newRackBlank();
+    }
     final fresh = nv.rack.where((t) => !order.contains(t)).toList();
-    order.addAll(fresh);
+    var packed = trimRack(order);
+    for (final t in fresh) {
+      packed = addToRack(packed, t);
+    }
+    order
+      ..clear()
+      ..addAll(packed);
     if (nv.myTurn && turnChanged) {
       _turnStartOrder = List.of(order);
     }
@@ -187,6 +208,12 @@ class _GameScreenState extends State<GameScreen> {
         if (mounted) setState(() => _starterBanner = null);
       });
     }
+    // My turn just ended (or the phone passed to the next player): remember the table, so
+    // what others add from now on glows white when I next look.
+    if (old != null && old.myTurn && (nv.me != old.me || !nv.myTurn || nv.turnSeq != old.turnSeq)) {
+      _tilesAtMyTurnEnd[old.me] = (round: nv.round, tiles: nv.board.allTiles.toSet());
+    }
+    if (nv.result == null) _resultsHidden = false;
     _deadline = nv.msLeft == null ? null : DateTime.now().add(Duration(milliseconds: nv.msLeft!));
     _clockRunning = nv.clockRunning;
     v = nv;
@@ -226,10 +253,29 @@ class _GameScreenState extends State<GameScreen> {
   /// Rack entries as shown: tiles not on the table this turn, plus the gaps between sorted sets.
   List<int> get _rackShown {
     final onBoard = _myTurn ? working.allTiles.toSet() : <int>{};
-    return tidyRackGaps(_order.where((t) => !onBoard.contains(t)).toList());
+    // A tile out on the table this turn leaves its slot blank (it returns there on Reset).
+    return trimRack([for (final t in _order) onBoard.contains(t) ? -1000 - t : t]);
   }
 
   bool _onBoard(int t) => _shown.find(t) != null;
+
+  /// Tiles with the white glow: the tiles other players added to the table since my last
+  /// turn, until I draw or play a tile on my turn. After a round: the winner's final turn
+  /// (mine too).
+  Set<int> get _newGlow {
+    final pv = v;
+    if (pv == null) return const {};
+    if (pv.result != null) return pv.board.allTiles.toSet().difference(pv.turnStartBoard.allTiles.toSet());
+    if (pv.myTurn) {
+      if (_playedThisTurn.isNotEmpty) _glowDoneSeq = pv.turnSeq;
+      if (_glowDoneSeq == pv.turnSeq) return const {};
+    }
+    final base = _tilesAtMyTurnEnd[pv.me];
+    final seen = base != null && base.round == pv.round ? base.tiles : const <int>{};
+    final out = _shown.allTiles.toSet().difference(seen);
+    if (pv.myTurn) out.removeAll(_playedThisTurn);
+    return out;
+  }
 
   /// Can these tiles be put on (or moved around) the table right now?
   String? _boardBlock(List<int> tiles) {
@@ -350,6 +396,8 @@ class _GameScreenState extends State<GameScreen> {
     if (d == null) return;
     final g = _geo!;
     final cell = _dropCell();
+    final sz = _dragTileSize();
+    final firstCenter = _dragTopLeft() + Offset(sz.width / 2, sz.height / 2);
     _drag = null;
     final tiles = d.tiles;
     final fromLongPress = _longPressing;
@@ -374,18 +422,14 @@ class _GameScreenState extends State<GameScreen> {
           return;
         }
       }
-      // Reorder the rack (and return this turn's tiles from the table).
-      final shown = _rackShown;
-      var idx = g.rackIndexAt(d.pointer - Offset(g.rackTileW * (d.grab.dx - .5), 0));
-      final before = shown.take(idx).where((t) => !tiles.contains(t)).length;
-      final rest = _order.where((t) => !tiles.contains(t)).toList();
-      final shownRest = shown.where((t) => !tiles.contains(t)).toList();
-      final anchor = before < shownRest.length ? shownRest[before] : null;
-      idx = anchor == null ? rest.length : rest.indexOf(anchor);
-      rest.insertAll(idx, tiles);
+      // Into the slot under the first dragged tile (any time, even on others' turns), leaving
+      // blanks where the player wants them (and returning this turn's tiles from the table).
+      final slot = g.rackSlotAt(firstCenter);
+      final onBoard = _myTurn ? working.allTiles.toSet().difference(back.toSet()) : <int>{};
+      final placed = placeInRack(_order, tiles, slot, free: onBoard);
       _order
         ..clear()
-        ..addAll(rest);
+        ..addAll(placed);
       if (back.isNotEmpty) {
         final b = working.copy()..removeTiles(back);
         _setWorking(b);
@@ -405,6 +449,10 @@ class _GameScreenState extends State<GameScreen> {
       _flashRed(tiles, why);
       return;
     }
+    // Added to a set holding a joker with no valid place for the tile: the joker swap shortcut
+    // repositions the joker (2-3-J + 4 makes 2-3-4-J) or sets it free (4-4-4-J + 4).
+    final into = _dropTarget(tiles, cell.row, cell.col, cell.frac);
+    if (into != null && !Layout.hasValidFit(working, tiles, into.set, into.index) && _tryReclaim(tiles, into.set)) return;
     _setWorking(_placeAt(tiles, cell.row, cell.col, cell.frac), moved: tiles);
   }
 
@@ -448,6 +496,26 @@ class _GameScreenState extends State<GameScreen> {
     return false;
   }
 
+  /// The set a drop at ([row], [col]) adds [tiles] to, and where: a set under the drop point,
+  /// or one the dropped tiles would touch end-on.
+  ({int set, int index})? _dropTarget(List<int> tiles, int row, int col, double frac) {
+    final tmp = working.copy()..removeTiles(tiles);
+    if (row >= tmp.rowCount) return null;
+    final c = col.clamp(0, Board.width - tiles.length);
+    final at = tmp.rows[row][c];
+    if (at >= 0) {
+      final blk = tmp.blockOf(at)!;
+      return (set: at, index: (c - blk.start) + (frac > .5 ? 1 : 0));
+    }
+    if (c > 0 && tmp.rows[row][c - 1] >= 0) {
+      final blk = tmp.blockOf(tmp.rows[row][c - 1])!;
+      return (set: blk.tiles.first, index: blk.length);
+    }
+    final after = c + tiles.length;
+    if (after < Board.width && tmp.rows[row][after] >= 0) return (set: tmp.rows[row][after], index: 0);
+    return null;
+  }
+
   Board _placeAt(List<int> tiles, int row, int col, double frac) {
     final tmp = working.copy()..removeTiles(tiles);
     if (row < tmp.rowCount && tmp.rows[row][col] >= 0) {
@@ -486,10 +554,9 @@ class _GameScreenState extends State<GameScreen> {
   /// the set if that makes a valid set, at the end nearer the tap when both ends work.
   /// Otherwise the selection flashes red and stays selected.
   void _autoPlace(List<int> sel, int target) {
-    if (_tryReclaim(sel, target)) return;
     final why = _boardBlock(sel);
     if (why != null) {
-      _flashRed(sel, why);
+      if (!_tryReclaim(sel, target)) _flashRed(sel, why);
       return;
     }
     final tmp = working.copy()..removeTiles(sel);
@@ -500,6 +567,14 @@ class _GameScreenState extends State<GameScreen> {
     if (at != null) {
       _groupSel = false;
       _setWorking(Layout.insertInto(tmp, sel, blk.tiles.first, at), moved: sel);
+      return;
+    }
+    // No valid end: the joker swap shortcut, then the split for a number the run already has.
+    if (_tryReclaim(sel, target)) return;
+    final split = Layout.splitDuplicate(tmp, sel, target);
+    if (split != null) {
+      _groupSel = false;
+      _setWorking(split, moved: sel);
       return;
     }
     // Not valid there: flash red, keep the selection.
@@ -545,9 +620,13 @@ class _GameScreenState extends State<GameScreen> {
       _flashRed(back, kTableTileToRack);
       return;
     }
+    var order = [for (final e in _order) back.contains(e) ? newRackBlank() : e];
+    for (final t in back) {
+      order = addToRack(order, t);
+    }
     _order
-      ..removeWhere(back.contains)
-      ..addAll(back);
+      ..clear()
+      ..addAll(order);
     _setWorking(working.copy()..removeTiles(back));
   }
 
@@ -640,21 +719,24 @@ class _GameScreenState extends State<GameScreen> {
     _history.clear();
     _selected.clear();
     final rack = v!.rack.toSet();
-    final restored = _turnStartOrder.where((t) => isRackGap(t) || rack.contains(t)).toList();
-    final extra = v!.rack.where((t) => !restored.contains(t));
+    var restored = [for (final t in _turnStartOrder) isRackGap(t) || rack.contains(t) ? t : newRackBlank()];
+    for (final t in v!.rack.where((t) => !restored.contains(t)).toList()) {
+      restored = addToRack(restored, t);
+    }
     _order
       ..clear()
-      ..addAll(restored)
-      ..addAll(extra);
+      ..addAll(trimRack(restored));
     s.act(PreviewAction(working));
     _haptic();
     setState(() {});
   }
 
-  /// 789 / 777: valid sets of 3+ to the top left (each followed by a small gap), then the rest sorted.
+  /// 789 / 777: valid sets of 3+ to the top left (each followed by a blank slot), then the rest
+  /// sorted. This packs the rack (no other blanks); a set doesn't straddle the row break.
   void _sort(bool runs) {
     final onBoard = _myTurn ? working.allTiles.toSet() : <int>{};
-    final rack = sortRackWithSets(_order.where((t) => !isRackGap(t) && !onBoard.contains(t)).toList(), runs: runs);
+    final rack = keepSetsOnRows(sortRackWithSets(_order.where((t) => !isRackGap(t) && !onBoard.contains(t)).toList(), runs: runs));
+    // Tiles out on the table this turn keep slots after the sorted ones (for Reset).
     final rest = _order.where(onBoard.contains).toList();
     _order
       ..clear()
@@ -783,7 +865,9 @@ class _GameScreenState extends State<GameScreen> {
                   rackEntries: rack,
                   seatCount: pv.seats.length,
                   viewRows: view.rows,
-                  viewCols: view.cols);
+                  viewCols: view.cols,
+                  contentFrom: view.from,
+                  contentTo: view.to);
               _geo = g;
               return Stack(
                 key: _stackKey,
@@ -812,7 +896,16 @@ class _GameScreenState extends State<GameScreen> {
                   if (_toast != null) _toastWidget(g),
                   if (_starterBanner != null && pv.result == null && s.coverFor == null) _starterBannerWidget(g, _starterBanner!),
                   if (s.status != null) _statusBanner(g, s.status!),
-                  if (pv.result != null) Positioned.fill(child: ResultsOverlay(session: s, view: pv, onLeave: _leave)),
+                  if (pv.result != null && !_resultsHidden)
+                    Positioned.fill(
+                        child: ResultsOverlay(
+                            session: s, view: pv, onLeave: _leave, onMinimize: () => setState(() => _resultsHidden = true))),
+                  if (pv.result != null && _resultsHidden)
+                    Positioned(
+                      right: 10,
+                      bottom: 10,
+                      child: GoldButton('Show results', icon: Icons.emoji_events, onPressed: () => setState(() => _resultsHidden = false)),
+                    ),
                   // Pass-and-play: the drawn tiles are on show; the turn is over, so no input.
                   if (s.revealTiles.isNotEmpty) const Positioned.fill(child: AbsorbPointer()),
                   if (s.coverFor != null) Positioned.fill(child: _cover(s.coverFor!)),
@@ -830,10 +923,11 @@ class _GameScreenState extends State<GameScreen> {
   /// only when a set sits below the rows in view (Add row, auto-placement), never just
   /// because a tile landed in the last visible row: every row keeps the same cell size. When
   /// the bottom rows empty the view zooms back in; end-of-turn tidying removes empty rows at
-  /// the top. Columns: the view is centred on the board's middle and keeps
-  /// [TableTuning.spareCols] empty columns beside the outermost sets on each side, so sets
-  /// can be extended either way. The view never changes during a drag.
-  ({double rows, double cols}) _boardView(Board b) {
+  /// the top. Columns zoom out only when the sets themselves don't fit across: no spare
+  /// columns are kept (dropping a tile on a set's end tile extends it at its valid end), and
+  /// the window of columns shifts rather than zooms when sets sit off-centre. The view never
+  /// changes during a drag.
+  ({double rows, double cols, int? from, int? to}) _boardView(Board b) {
     final frozen = _view;
     if (_drag != null && frozen != null) return frozen;
     final used = b.usedRows;
@@ -845,14 +939,11 @@ class _GameScreenState extends State<GameScreen> {
       }
     }
     final rows = math.max(TableGeo.minViewRows, (used.isEmpty ? 0 : used.last + 1).toDouble());
-    final cols = maxCol < 0
-        ? TableGeo.minViewCols
-        : TableGeo.colsToShow(math.max(0, minCol - TableTuning.spareCols), math.min(Board.width - 1, maxCol + TableTuning.spareCols))
-            .toDouble();
-    return _view = (rows: rows, cols: cols);
+    final cols = maxCol < 0 ? TableGeo.minViewCols : TableGeo.colsToShow(minCol, maxCol).toDouble();
+    return _view = (rows: rows, cols: cols, from: maxCol < 0 ? null : minCol, to: maxCol < 0 ? null : maxCol);
   }
 
-  ({double rows, double cols})? _view;
+  ({double rows, double cols, int? from, int? to})? _view;
 
   Widget _starterBannerWidget(TableGeo g, String text) => Positioned(
         left: 0,
@@ -989,6 +1080,18 @@ class _GameScreenState extends State<GameScreen> {
     ];
   }
 
+  /// The tile-count badge on a player's avatar (opponents and you).
+  Widget _countBadge(int n, {Key? key}) => Positioned(
+        key: key,
+        right: -10,
+        top: -6,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+          decoration: BoxDecoration(gradient: MK.goldGradient, borderRadius: BorderRadius.circular(9)),
+          child: Text('$n', style: MK.body(11, color: const Color(0xFF2A1404), weight: FontWeight.w800)),
+        ),
+      );
+
   Widget _avatar(SeatView sv, double size, {bool current = false}) {
     final idx = v!.seats.indexOf(sv);
     final robot = robotByAvatar(sv.info.avatar);
@@ -1053,15 +1156,7 @@ class _GameScreenState extends State<GameScreen> {
         top: c.dy - a / 2,
         child: Stack(clipBehavior: Clip.none, children: [
           _avatar(sv, a, current: current),
-          Positioned(
-            right: -10,
-            top: -6,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-              decoration: BoxDecoration(gradient: MK.goldGradient, borderRadius: BorderRadius.circular(9)),
-              child: Text('$shown', style: MK.body(11, color: const Color(0xFF2A1404), weight: FontWeight.w800)),
-            ),
-          ),
+          _countBadge(shown),
         ]),
       ));
       final label = '${sv.info.name}${sv.connected ? '' : ' (offline)'}${current ? '  ${_clockText()}' : ''}';
@@ -1107,13 +1202,16 @@ class _GameScreenState extends State<GameScreen> {
         width: infoW,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
           Text('${me.info.name} (you)', maxLines: 1, overflow: TextOverflow.ellipsis, style: MK.body(12, weight: FontWeight.w700)),
-          Text(my ? 'YOUR TURN' : 'Waiting…', style: MK.body(10, color: my ? MK.goldLight : MK.gold, weight: FontWeight.w700)),
           if (!me.melded && pv.rules.firstMeld > 0)
             Text('First meld: ${pv.rules.firstMeld}+ pts', style: MK.body(10, color: MK.gold)),
           const SizedBox(height: 4),
           Row(children: [
-            _avatar(me, a, current: my),
-            const SizedBox(width: 8),
+            // Your tile count, like the opponents' (tiles you've put on the table this turn don't count).
+            Stack(clipBehavior: Clip.none, children: [
+              _avatar(me, a, current: my),
+              _countBadge(_rackShown.where((t) => !isRackGap(t)).length, key: const ValueKey('myCount')),
+            ]),
+            const SizedBox(width: 14),
             if (my && _deadline != null) Text(_clockText(), style: MK.body(18, weight: FontWeight.w700)),
           ]),
         ]),
@@ -1186,7 +1284,6 @@ class _GameScreenState extends State<GameScreen> {
     final invalid = _myTurn && prefs.highlightValid ? board.invalidBlocks.expand((b) => b.tiles).toSet() : <int>{};
     final dragging = _drag?.tiles.toSet() ?? <int>{};
     final pos = _seatPositions(pv);
-    final startTiles = _startTiles;
     Rect? spawnRect(int t) {
       final sp = _spawns[t];
       if (sp == null) return null;
@@ -1206,12 +1303,12 @@ class _GameScreenState extends State<GameScreen> {
       return TileGlow.none;
     }
 
+    final newGlow = _newGlow;
     for (var r = 0; r < board.rowCount; r++) {
       for (var c = 0; c < Board.width; c++) {
         final t = board.rows[r][c];
         if (t < 0 || dragging.contains(t)) continue;
-        out.add(_sprite(t, g.cellRect(r, c), spawnRect(t), glow(t), board: true,
-            fresh: _myTurn && !startTiles.contains(t)));
+        out.add(_sprite(t, g.cellRect(r, c), spawnRect(t), glow(t), board: true, newGlow: newGlow.contains(t)));
       }
     }
     for (var i = 0; i < rack.length; i++) {
@@ -1236,10 +1333,11 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Widget _sprite(int t, Rect rect, Rect? spawn, TileGlow glow,
-      {required bool board, bool instant = false, bool lifted = false, bool fresh = false}) {
+      {required bool board, bool instant = false, bool lifted = false, bool newGlow = false}) {
     return _TileSprite(
       key: ValueKey(t),
       tile: t,
+      newGlow: newGlow,
       rect: rect,
       spawnFrom: spawn,
       glow: glow,
@@ -1317,6 +1415,9 @@ class _TileSprite extends StatefulWidget {
   final Rect rect;
   final Rect? spawnFrom;
   final TileGlow glow;
+
+  /// The white "new on the table" glow (fades in and out).
+  final bool newGlow;
   final bool instant;
   final bool lifted;
   final VoidCallback onTap;
@@ -1332,6 +1433,7 @@ class _TileSprite extends StatefulWidget {
     required this.rect,
     required this.spawnFrom,
     required this.glow,
+    this.newGlow = false,
     required this.instant,
     required this.lifted,
     required this.onTap,
@@ -1424,6 +1526,24 @@ class _TileSpriteState extends State<_TileSprite> with SingleTickerProviderState
                 : face,
           );
         }
+        face = TweenAnimationBuilder<double>(
+          tween: Tween(end: widget.newGlow ? 1 : 0),
+          duration: const Duration(milliseconds: TableTuning.newGlowFadeMs),
+          builder: (_, a, child) => a <= 0
+              ? child!
+              : DecoratedBox(
+                  key: const ValueKey('newGlow'),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(r.width * .14),
+                    boxShadow: [
+                      BoxShadow(color: Colors.white.withValues(alpha: .95 * a), spreadRadius: 1.5),
+                      BoxShadow(color: Colors.white.withValues(alpha: .7 * a), blurRadius: r.width * .35, spreadRadius: r.width * .05),
+                    ],
+                  ),
+                  child: child,
+                ),
+          child: face,
+        );
         if (widget.lifted) face = Transform.scale(scale: 1.06, child: face);
         return Positioned.fromRect(
           rect: r,

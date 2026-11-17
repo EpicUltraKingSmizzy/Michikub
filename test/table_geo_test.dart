@@ -26,20 +26,17 @@ void main() {
     expect(wider.shownRows, greaterThanOrEqualTo(3));
   });
 
-  test('rack gaps add a small space and a sorted set is not split across rows', () {
-    // 8 tiles, gap, 3-tile set, gap, 6 tiles: the set would straddle the row break.
-    final entries = [...tiles(8), -1, 100, 101, 102, -2, ...[200, 201, 202, 203, 204, 205]];
+  test('the rack is a grid of slots: blanks are a tile wide, drops find the slot under them', () {
+    final entries = [1, 2, -1, 3, ...[for (var i = 10; i < 18; i++) i]];
     final g = TableGeo(phone, boardRows: 5, rackEntries: entries, seatCount: 2);
-    final a = g.rackSlot(7), set0 = g.rackSlot(9), set2 = g.rackSlot(11);
-    expect(set0.top, set2.top, reason: 'the whole set is on one row');
-    expect(set0.top, greaterThan(a.top), reason: 'it moved down to the second row');
-    // Gap between sets is smaller than a tile.
-    final afterGap = g.rackSlot(13);
-    final gap = afterGap.left - set2.right;
-    expect(gap, greaterThan(g.rackTileW * .2));
-    expect(gap, lessThan(g.rackTileW * .8));
-    // Dropping just left of the first tile after the gap inserts before it.
-    expect(g.rackIndexAt(Offset(afterGap.left + 2, afterGap.center.dy)), 13);
+    expect(g.rackRows, 2);
+    expect(g.rackPerRow, 10);
+    final s0 = g.rackSlot(0), s3 = g.rackSlot(3), s10 = g.rackSlot(10);
+    expect(s3.left - s0.left, closeTo(3 * g.rackTileW, .01), reason: 'the blank takes a full slot');
+    expect(s10.left, closeTo(s0.left, .01));
+    expect(s10.top, greaterThan(s0.top));
+    expect(g.rackSlotAt(g.slotRect(2).center), 2, reason: 'a blank slot can be hit');
+    expect(g.rackSlotAt(g.slotRect(19).center), 19, reason: 'past the last entry');
   });
 
   test('the columns in view are centred on the board (where tidying gathers sets)', () {
@@ -50,7 +47,27 @@ void main() {
     expect(g.cellAt(Offset(g.boardRect.left + 1, g.cellRect(0, 0).center.dy))!.col, g.firstCol);
     expect(TableGeo.colsToShow(10, 16), 16);
     expect(TableGeo.colsToShow(0, 26), 27);
-    final n = TableGeo.colsToShow(2, 14);
-    expect(TableGeo.firstColFor(n), lessThanOrEqualTo(2));
+  });
+
+  test('v0.1.7: no spare columns, and off-centre sets shift the window instead of zooming out', () {
+    // Only the sets' own span counts.
+    expect(TableGeo.colsToShow(2, 14), 16);
+    expect(TableGeo.colsToShow(3, 22), 20);
+    final centred = TableGeo(phone, boardRows: 5, rackEntries: tiles(14), seatCount: 4, viewRows: 3, viewCols: 16);
+    final left = TableGeo(phone, boardRows: 5, rackEntries: tiles(14), seatCount: 4, viewRows: 3, viewCols: 16, contentFrom: 0, contentTo: 12);
+    expect(left.cellW, centred.cellW, reason: 'same zoom');
+    expect(left.firstCol, 0, reason: 'the window shifted left to show column 0');
+    final right = TableGeo(phone, boardRows: 5, rackEntries: tiles(14), seatCount: 4, viewRows: 3, viewCols: 16, contentFrom: 14, contentTo: 26);
+    expect(right.lastCol, 26);
+    expect(right.cellW, centred.cellW);
+    // Sets near the middle keep the centred window.
+    final mid = TableGeo(phone, boardRows: 5, rackEntries: tiles(14), seatCount: 4, viewRows: 3, viewCols: 16, contentFrom: 10, contentTo: 16);
+    expect(mid.firstCol, centred.firstCol);
+  });
+
+  test('v0.1.7: the board reaches closer to the side seats', () {
+    final g = TableGeo(const Size(873, 393), boardRows: 5, rackEntries: tiles(14), seatCount: 4);
+    expect(g.sideW, lessThanOrEqualTo(62));
+    expect(g.boardRect.left, g.sideW);
   });
 }

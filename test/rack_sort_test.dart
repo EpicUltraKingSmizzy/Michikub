@@ -53,7 +53,50 @@ void main() {
     expect(sortRackWithSets(rack, runs: true).any(isRackGap), false);
   });
 
-  test('tidy removes leading, trailing and doubled gaps', () {
-    expect(tidyRackGaps([-1, 5, -2, -3, 6, -4]), [5, -2, 6]);
+  group('rack slots (v0.1.7: blanks stay where the player leaves them)', () {
+    List<String> show(List<int> e) => [for (final x in e) isRackGap(x) ? '_' : '$x'];
+
+    test('only blanks at the end are trimmed', () {
+      expect(show(trimRack([-1, 5, -2, -3, 6, -4])), ['_', '5', '_', '_', '6']);
+    });
+
+    test('a drop past the last tile pads with blanks', () {
+      expect(show(placeInRack([1, 2, 3], [9], 6)), ['1', '2', '3', '_', '_', '_', '9']);
+    });
+
+    test('moving a tile leaves its slot blank; a drop on a blank fills it', () {
+      final e = placeInRack([1, 2, 3, 4], [2], 6);
+      expect(show(e), ['1', '_', '3', '4', '_', '_', '2']);
+      expect(show(placeInRack(e, [4], 1)), ['1', '4', '3', '_', '_', '_', '2']);
+    });
+
+    test('a drop on a tile shifts tiles right only as far as the next blank', () {
+      expect(show(placeInRack([1, 2, -5, 3, 4], [9], 0)), ['9', '1', '2', '3', '4']);
+      expect(show(placeInRack([1, 2, 3], [9], 1)), ['1', '9', '2', '3']);
+    });
+
+    test('several tiles land in consecutive slots', () {
+      expect(show(placeInRack([1, 2, 3, 4, 5], [4, 5], 7)), ['1', '2', '3', '_', '_', '_', '_', '4', '5']);
+    });
+
+    test('tiles on the table count as blank slots', () {
+      expect(show(placeInRack([1, 7, 3], [9], 1, free: {7})), ['1', '9', '3']);
+    });
+
+    test('drawn tiles go after the last tile; a full two rows fills the last blank instead', () {
+      expect(show(addToRack([1, -3, 2, -4], 8)), ['1', '_', '2', '8']);
+      final full = [for (var i = 0; i < 20; i++) i == 4 ? -7 : i + 100];
+      final out = addToRack(full, 8);
+      expect(out.length, 20);
+      expect(out[4], 8);
+    });
+
+    test('sorted sets do not straddle the row break', () {
+      // 8 tiles, gap, then a 3-tile set: the set starts the second row.
+      final sorted = [for (var i = 0; i < 8; i++) i + 1, -1, 50, 51, 52];
+      final out = keepSetsOnRows(sorted);
+      expect(out.indexOf(50), kRackRowSlots);
+      expect(out.sublist(kRackRowSlots), [50, 51, 52]);
+    });
   });
 }

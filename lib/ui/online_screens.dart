@@ -187,6 +187,10 @@ class _HostLobbyScreenState extends State<HostLobbyScreen> {
   }
 }
 
+/// The last room code this phone joined, kept in memory until the app is closed (not saved
+/// to disk), so a player who backs out by accident can rejoin quickly.
+String? lastRoomCode;
+
 class JoinScreen extends StatefulWidget {
   /// A room code to fill in (from a michikub://join/CODE link).
   final String? initialCode;
@@ -198,7 +202,10 @@ class JoinScreen extends StatefulWidget {
 class _JoinScreenState extends State<JoinScreen> {
   final prefs = AppPrefs.instance;
   late final nameCtl = TextEditingController(text: prefs.name);
-  late final codeCtl = TextEditingController(text: widget.initialCode ?? '');
+  late final codeCtl = TextEditingController(text: widget.initialCode ?? lastRoomCode ?? '');
+
+  /// The box holds the last room's code (not one from a link): the first tap clears it.
+  late bool _clearOnTap = widget.initialCode == null && (lastRoomCode ?? '').isNotEmpty;
 
   void _saveName() {
     if (nameCtl.text.trim().isNotEmpty) {
@@ -211,6 +218,7 @@ class _JoinScreenState extends State<JoinScreen> {
     final code = codeCtl.text.trim().toUpperCase();
     if (code.length < 4) return;
     _saveName();
+    lastRoomCode = code;
     final g = NetGuest.code(prefs.name, code);
     Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => GuestLobbyScreen(guest: g)));
   }
@@ -240,6 +248,12 @@ class _JoinScreenState extends State<JoinScreen> {
                     }),
                   ],
                   style: MK.code(22, letterSpacing: 4),
+                  onTap: () {
+                    if (!_clearOnTap) return;
+                    _clearOnTap = false;
+                    codeCtl.clear();
+                  },
+                  onChanged: (_) => _clearOnTap = false,
                   decoration: const InputDecoration(labelText: 'Room code', counterText: ''),
                   onSubmitted: (_) => _joinCode(),
                 ),

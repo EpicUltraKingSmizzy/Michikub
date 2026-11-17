@@ -24,9 +24,6 @@ class TableGeo {
   static const minViewRows = 3.0;
   static const minViewCols = 16.0;
 
-  /// Width of a gap between sorted sets in the rack, as a share of a rack tile.
-  static const rackGapFrac = 0.4;
-
   late final double topH, sideW, ctrlW, ctrlH;
   late final double avatar;
   late final double backW, backH;
@@ -49,32 +46,36 @@ class TableGeo {
   static const tileAspect = 1.38;
   static const rowWidth = 27;
 
+  /// The columns holding sets ([contentFrom]..[contentTo]); the window of columns in view
+  /// stays centred on the board when it can, and shifts just enough to show them all.
+  final int? contentFrom, contentTo;
+
   TableGeo(this.size,
-      {required this.boardRows, required this.rackEntries, required this.seatCount, double? viewRows, double? viewCols})
+      {required this.boardRows,
+      required this.rackEntries,
+      required this.seatCount,
+      double? viewRows,
+      double? viewCols,
+      this.contentFrom,
+      this.contentTo})
       : viewRows = (viewRows ?? minViewRows).clamp(minViewRows, math.max(minViewRows, boardRows.toDouble())),
         viewCols = (viewCols ?? minViewCols).clamp(minViewCols, rowWidth.toDouble()) {
     final rackCount = math.max(1, rackEntries.length);
     final w = size.width, h = size.height;
     topH = (h * .12).clamp(42.0, 66.0);
-    sideW = (w * .085).clamp(56.0, 92.0);
+    // Side seat columns: just wide enough for an avatar, its count badge and two columns of backs.
+    sideW = (w * .07).clamp(56.0, 80.0);
     ctrlW = (w * .21).clamp(150.0, 250.0);
     avatar = (h * .1).clamp(30.0, 48.0);
     backW = (h * .024).clamp(7.0, 12.0);
     backH = backW * 1.33;
 
-    // Rack: 10 tiles per row, 2 rows past 10. Past 20, the two rows share
-    // the tiles and the tiles narrow.
-    // Gaps count as a full slot here, so there is always room for them.
-    var perRow = rackCount <= 20 ? 10 : (rackCount + 1) ~/ 2;
-    rackRows = rackCount <= 10 ? 1 : 2;
+    // Rack: a grid of slots, 10 per row, 2 rows past 10 entries. Past 20, the two rows share
+    // the entries and the tiles narrow. Blank slots (entries < 0) are a full tile wide.
+    rackPerRow = rackSlotsPerRow(rackCount);
+    rackRows = rackRowsFor(rackCount);
     final rackAvail = w - 2 * ctrlW - 16;
     final baseTileW = math.min(h * .115, rackAvail / 10.8);
-    var rects = _layoutRack(perRow, baseTileW * 10 / perRow);
-    while (rects == null) {
-      perRow++;
-      rects = _layoutRack(perRow, baseTileW * 10 / perRow);
-    }
-    rackPerRow = perRow;
     rackTileW = baseTileW * 10 / rackPerRow;
     rackTileH = baseTileW * tileAspect;
     rackRowH = rackTileH + baseTileW * .34;
@@ -84,11 +85,8 @@ class TableGeo {
     final rackH = rackRows * rackRowH + rackPadTop + 2;
     rackRect = Rect.fromLTWH((w - rackW) / 2, h - rackH, rackW, rackH);
     _rackRects = [
-      for (final r in rects)
-        r == null
-            ? null
-            : Rect.fromLTWH(rackRect.left + rackPadX + r.left + rackTileW * .03, rackRect.top + rackPadTop + r.top * rackRowH,
-                rackTileW * .94, rackTileH),
+      for (var i = 0; i < rackEntries.length; i++)
+        isRackGap(rackEntries[i]) ? null : slotRect(i),
     ];
     makeSpaceRect = Rect.fromLTWH(rackRect.left - 52, h - 50, 44, 44);
 
@@ -105,7 +103,14 @@ class TableGeo {
     shownRows = math.max(1, math.min(boardRows, ((boardRect.height + tileH * gapF) / rowPitch + 0.01).floor()));
     final usedH = math.max(this.viewRows, shownRows.toDouble()) * rowPitch - tileH * gapF;
     final whole = math.min(rowWidth, (shownCols + 1e-6).floor());
-    firstCol = firstColFor(whole);
+    var first = firstColFor(whole);
+    if (contentFrom != null && contentTo != null) {
+      // Shift (don't zoom) so off-centre sets stay in view: right edge first, then left.
+      first = math.max(first, contentTo! - whole + 1);
+      first = math.min(first, contentFrom!);
+      first = first.clamp(0, rowWidth - whole);
+    }
+    firstCol = first;
     lastCol = firstCol + whole - 1;
     boardOrigin = Offset(
       boardRect.left + (boardRect.width - whole * cellW) / 2 - firstCol * cellW,
@@ -119,14 +124,9 @@ class TableGeo {
   /// First column in view when [n] whole columns are shown, centred on the board.
   static int firstColFor(int n) => (rowWidth - n.clamp(1, rowWidth)) ~/ 2;
 
-  /// Fewest columns (at least [minViewCols]) whose centred window shows columns [from]..[to].
-  static int colsToShow(int from, int to) {
-    for (var n = minViewCols.toInt(); n < rowWidth; n++) {
-      final f = firstColFor(n);
-      if (f <= from && f + n - 1 >= to) return n;
-    }
-    return rowWidth;
-  }
+  /// Columns to show (at least [minViewCols]) so that columns [from]..[to] fit. The window
+  /// can shift ([contentFrom]), so only their span counts, not their distance from the middle.
+  static int colsToShow(int from, int to) => math.max(minViewCols.toInt(), math.min(rowWidth, to - from + 1));
 
   Rect cellRect(int row, int col) => Rect.fromLTWH(
       boardOrigin.dx + col * cellW + cellW * .04, boardOrigin.dy + row * rowPitch, cellW * .92, tileH);
@@ -142,47 +142,6 @@ class TableGeo {
     return (row: row, col: col, frac: fx - fx.floor());
   }
 
-  /// Lays out the rack entries in rows of [perRow] tile widths: x offsets in pixels, rows as `top`.
-  /// A sorted set that would straddle the row break starts on the next row instead.
-  /// Returns null when the entries don't fit in [rackRows] rows.
-  List<Rect?>? _layoutRack(int perRow, double tileW) {
-    final cap = perRow * tileW + 0.5;
-    List<Rect?>? attempt(bool keepSetsTogether) {
-      final out = <Rect?>[];
-      var x = 0.0;
-      var row = 0;
-      for (var i = 0; i < rackEntries.length; i++) {
-        final e = rackEntries[i];
-        if (isRackGap(e)) {
-          if (x > 0) x += tileW * rackGapFrac;
-          out.add(null);
-          continue;
-        }
-        if (keepSetsTogether && x > 0 && (i == 0 || isRackGap(rackEntries[i - 1]))) {
-          var j = i;
-          while (j < rackEntries.length && !isRackGap(rackEntries[j])) {
-            j++;
-          }
-          final isSet = j < rackEntries.length;
-          if (isSet && x + (j - i) * tileW > cap && (j - i) <= perRow) {
-            row++;
-            x = 0;
-          }
-        }
-        if (x + tileW > cap) {
-          row++;
-          x = 0;
-        }
-        if (row >= rackRows) return null;
-        out.add(Rect.fromLTWH(x, row.toDouble(), tileW, 1));
-        x += tileW;
-      }
-      return out;
-    }
-
-    return attempt(true) ?? attempt(false);
-  }
-
   /// Where rack entry [i] sits (null for a gap).
   Rect rackSlot(int i) =>
       (i >= 0 && i < _rackRects.length ? _rackRects[i] : null) ??
@@ -190,20 +149,15 @@ class TableGeo {
 
   bool inRack(Offset p) => rackRect.inflate(8).contains(p);
 
-  /// Index in [rackEntries] where tiles dropped at [p] would be inserted.
-  int rackIndexAt(Offset p) {
+  /// Where rack slot [i] is (filled or blank).
+  Rect slotRect(int i) => Rect.fromLTWH(rackRect.left + rackPadX + (i % rackPerRow) * rackTileW + rackTileW * .03,
+      rackRect.top + rackPadTop + (i ~/ rackPerRow) * rackRowH, rackTileW * .94, rackTileH);
+
+  /// The rack slot under [p] (it may be past the last entry: a drop there leaves blanks).
+  int rackSlotAt(Offset p) {
     final row = ((p.dy - rackRect.top - rackPadTop) / rackRowH).floor().clamp(0, rackRows - 1);
-    int? lastInRow;
-    for (var i = 0; i < _rackRects.length; i++) {
-      final r = _rackRects[i];
-      if (r == null) continue;
-      final rr = ((r.top - rackRect.top - rackPadTop) / rackRowH).round();
-      if (rr < row) continue;
-      if (rr > row) return lastInRow == null ? i : lastInRow + 1;
-      if (p.dx < r.center.dx) return i;
-      lastInRow = i;
-    }
-    return lastInRow == null ? rackEntries.length : lastInRow + 1;
+    final col = ((p.dx - rackRect.left - rackPadX) / rackTileW).floor().clamp(0, rackPerRow - 1);
+    return row * rackPerRow + col;
   }
 
   // --- opponent seats --------------------------------------------------

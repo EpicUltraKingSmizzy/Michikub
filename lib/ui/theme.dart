@@ -185,7 +185,10 @@ class RingButton extends StatelessWidget {
   final String? caption;
   final VoidCallback? onPressed;
   final double size;
-  const RingButton({super.key, this.icon, this.child, this.caption, this.onPressed, this.size = 44});
+
+  /// Selected (a mode that's on): gold fill instead of the dark one.
+  final bool selected;
+  const RingButton({super.key, this.icon, this.child, this.caption, this.onPressed, this.size = 44, this.selected = false});
   @override
   Widget build(BuildContext context) => Opacity(
         opacity: onPressed == null ? .45 : 1,
@@ -196,8 +199,8 @@ class RingButton extends StatelessWidget {
             height: size,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              gradient: const RadialGradient(colors: [Color(0xFF3A160C), Color(0xFF1A0805)]),
-              border: Border.all(color: MK.gold, width: 1.4),
+              gradient: selected ? MK.goldGradient : const RadialGradient(colors: [Color(0xFF3A160C), Color(0xFF1A0805)]),
+              border: Border.all(color: selected ? MK.goldLight : MK.gold, width: 1.4),
               boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 6, offset: Offset(0, 2))],
             ),
             child: Column(

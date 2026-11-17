@@ -83,12 +83,14 @@ void main() {
       expect(show(placeInRack([1, 7, 3], [9], 1, free: {7})), ['1', '9', '3']);
     });
 
-    test('drawn tiles go after the last tile; a full two rows fills the last blank instead', () {
+    test('drawn tiles go right after the last tile, keeping blanks between sets; past two rows, the first blank', () {
       expect(show(addToRack([1, -3, 2, -4], 8)), ['1', '_', '2', '8']);
-      final full = [for (var i = 0; i < 20; i++) i == 4 ? -7 : i + 100];
+      expect(show(addToRack([1, -3, -5, 2, -4, -6], 8)), ['1', '_', '_', '2', '8'], reason: 'the gap the player left stays');
+      final full = [for (var i = 0; i < 20; i++) i == 4 || i == 15 ? -7 - i : i + 100];
       final out = addToRack(full, 8);
       expect(out.length, 20);
-      expect(out[4], 8);
+      expect(out[4], 8, reason: 'the first blank, not a random one');
+      expect(isRackGap(out[15]), true);
     });
 
     test('sorted sets do not straddle the row break', () {

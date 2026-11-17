@@ -79,9 +79,9 @@ String randomToken([int n = 12]) {
   return List.generate(n, (_) => chars[r.nextInt(chars.length)]).join();
 }
 
-/// Room codes avoid look-alike characters (0/O, 1/I/L).
+/// Room codes are letters only, without the look-alikes I, L and O.
 String randomRoomCode() {
-  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ';
   final r = math.Random.secure();
   return List.generate(6, (_) => chars[r.nextInt(chars.length)]).join();
 }

@@ -96,12 +96,13 @@ List<int> placeInRack(List<int> entries, List<int> tiles, int slot, {Set<int> fr
   return trimRack(out);
 }
 
-/// Adds [tile] (drawn, or back from the table) after the last tile; once the rack is two full
-/// rows, it fills the last blank slot instead, so holes don't make the rack grow.
+/// A tile entering the rack (a draw) goes in the slot right after the last tile, keeping any
+/// blanks the player left between sets. Once that's past the two rows (20 slots), it takes
+/// the first blank; with no blanks, it's added at the end.
 List<int> addToRack(List<int> entries, int tile) {
   final out = trimRack(entries);
   if (out.length >= 2 * kRackRowSlots) {
-    final i = out.lastIndexWhere(isRackGap);
+    final i = out.indexWhere(isRackGap);
     if (i >= 0) {
       out[i] = tile;
       return out;

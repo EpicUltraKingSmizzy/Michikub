@@ -21,9 +21,9 @@ void main() {
     tester.view.physicalSize = const Size(844, 390);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    final net = NetHost('Ann', const HouseRules(), open: false)..code = 'K7MQ2P';
+    final net = NetHost('Ann', const HouseRules(), open: false)..code = 'KTMQZP';
     await tester.pumpWidget(MaterialApp(home: HostLobbyScreen(net: net)));
-    final style = tester.widget<Text>(find.text('K7MQ2P')).style!;
+    final style = tester.widget<Text>(find.text('KTMQZP')).style!;
     expect(style.fontFamily, 'SpaceGrotesk');
     expect(style.fontWeight, FontWeight.w700);
     expect(style.color, const Color(0xFFFBE08A));

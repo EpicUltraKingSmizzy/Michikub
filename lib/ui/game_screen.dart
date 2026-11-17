@@ -25,6 +25,9 @@ class TableTuning {
 
   /// How long the white "new on the table" glow takes to fade in or out.
   static const newGlowFadeMs = 700;
+
+  /// The bright pulse around your rack when your turn starts.
+  static const turnPulseMs = 650;
   static const flashMs = 650;
   static const shineMs = 750;
   static const toastMs = 2600;
@@ -79,6 +82,15 @@ class _GameScreenState extends State<GameScreen> {
 
   /// My rack order (with gaps) when my turn started, for Reset.
   List<int> _turnStartOrder = const [];
+
+  /// The selected sort mode per seat (true = 789 runs, false = 777 groups): while selected,
+  /// tiles entering the rack (draws, tiles taken back) re-sort it. Moving tiles by hand
+  /// deselects it.
+  final Map<String, bool> _sortModes = {};
+  bool? get _sortMode => _sortModes[v?.me ?? ''];
+
+  /// Bumped when my turn starts, to play the rack pulse.
+  int _turnPulseSeq = 0;
   final Set<int> _selected = {};
   /// The selection came from a long-press that was released without moving (several tiles,
   /// or a whole board set): tap a spot or a set to move it there.
@@ -165,11 +177,16 @@ class _GameScreenState extends State<GameScreen> {
     for (final t in fresh) {
       packed = addToRack(packed, t);
     }
+    final mode = _sortModes[nv.me];
+    if (fresh.isNotEmpty && mode != null) {
+      packed = _sortedEntries(packed, mode, nv.myTurn ? working.allTiles.toSet() : const {});
+    }
     order
       ..clear()
       ..addAll(packed);
     if (nv.myTurn && turnChanged) {
       _turnStartOrder = List.of(order);
+      _turnPulseSeq++;
     }
 
     if (!seatChanged) {
@@ -426,7 +443,13 @@ class _GameScreenState extends State<GameScreen> {
       // blanks where the player wants them (and returning this turn's tiles from the table).
       final slot = g.rackSlotAt(firstCenter);
       final onBoard = _myTurn ? working.allTiles.toSet().difference(back.toSet()) : <int>{};
-      final placed = placeInRack(_order, tiles, slot, free: onBoard);
+      var placed = placeInRack(_order, tiles, slot, free: onBoard);
+      if (back.isEmpty) {
+        // Rearranged by hand: the sort mode is deselected.
+        _sortModes.remove(v?.me);
+      } else if (_sortMode != null) {
+        placed = _sortedEntries(placed, _sortMode!, onBoard);
+      }
       _order
         ..clear()
         ..addAll(placed);
@@ -624,6 +647,7 @@ class _GameScreenState extends State<GameScreen> {
     for (final t in back) {
       order = addToRack(order, t);
     }
+    if (_sortMode != null) order = _sortedEntries(order, _sortMode!, working.allTiles.toSet().difference(back.toSet()));
     _order
       ..clear()
       ..addAll(order);
@@ -720,9 +744,11 @@ class _GameScreenState extends State<GameScreen> {
     _selected.clear();
     final rack = v!.rack.toSet();
     var restored = [for (final t in _turnStartOrder) isRackGap(t) || rack.contains(t) ? t : newRackBlank()];
-    for (final t in v!.rack.where((t) => !restored.contains(t)).toList()) {
+    final returned = v!.rack.where((t) => !restored.contains(t)).toList();
+    for (final t in returned) {
       restored = addToRack(restored, t);
     }
+    if (returned.isNotEmpty && _sortMode != null) restored = _sortedEntries(restored, _sortMode!, const {});
     _order
       ..clear()
       ..addAll(trimRack(restored));
@@ -733,17 +759,22 @@ class _GameScreenState extends State<GameScreen> {
 
   /// 789 / 777: valid sets of 3+ to the top left (each followed by a blank slot), then the rest
   /// sorted. This packs the rack (no other blanks); a set doesn't straddle the row break.
+  /// Sorts now and selects that mode (see [_sortModes]).
   void _sort(bool runs) {
-    final onBoard = _myTurn ? working.allTiles.toSet() : <int>{};
-    final rack = keepSetsOnRows(sortRackWithSets(_order.where((t) => !isRackGap(t) && !onBoard.contains(t)).toList(), runs: runs));
-    // Tiles out on the table this turn keep slots after the sorted ones (for Reset).
-    final rest = _order.where(onBoard.contains).toList();
+    final sorted = _sortedEntries(_order, runs, _myTurn ? working.allTiles.toSet() : const {});
+    _sortModes[v?.me ?? ''] = runs;
     _order
       ..clear()
-      ..addAll(rack)
-      ..addAll(rest);
+      ..addAll(sorted);
     _haptic();
     setState(() {});
+  }
+
+  /// [entries] sorted (789 when [runs], else 777); tiles out on the table this turn
+  /// ([onBoard]) keep slots after the sorted ones (for Reset).
+  static List<int> _sortedEntries(List<int> entries, bool runs, Set<int> onBoard) {
+    final rack = keepSetsOnRows(sortRackWithSets(entries.where((t) => !isRackGap(t) && !onBoard.contains(t)).toList(), runs: runs));
+    return [...rack, ...entries.where(onBoard.contains)];
   }
 
   void _makeSpace() {
@@ -886,6 +917,7 @@ class _GameScreenState extends State<GameScreen> {
                   ),
                   ..._dropHint(g),
                   ..._rackFrame(g, rack.length),
+                  if (_turnPulseSeq > 0) _turnPulse(g),
                   ..._seats(g, pv),
                   _brand(g),
                   ..._myCorner(g, pv),
@@ -1074,12 +1106,14 @@ class _GameScreenState extends State<GameScreen> {
           const SizedBox(height: 6),
           Tooltip(
             message: 'Sort: sets first, then runs order',
-            child: RingButton(size: 46, onPressed: () => _sort(true), child: _sortLabel('789')),
+            child: RingButton(
+                key: const ValueKey('sort789'), size: 46, selected: _sortMode == true, onPressed: () => _sort(true), child: _sortLabel('789', _sortMode == true)),
           ),
           const SizedBox(height: 6),
           Tooltip(
             message: 'Sort: sets first, then groups order',
-            child: RingButton(size: 46, onPressed: () => _sort(false), child: _sortLabel('777')),
+            child: RingButton(
+                key: const ValueKey('sort777'), size: 46, selected: _sortMode == false, onPressed: () => _sort(false), child: _sortLabel('777', _sortMode == false)),
           ),
         ]),
       ),
@@ -1165,20 +1199,31 @@ class _GameScreenState extends State<GameScreen> {
           _countBadge(shown),
         ]),
       ));
-      final label = _seatLabel(sv, current ? _clockText() : null);
+      // The name plate: the name, then the turn clock on its own line (kept even when it's not
+      // their turn, so nothing moves), so a long name can't push the clock out of view.
+      final label = _seatLabel(sv);
+      final timed = _timed(pv);
+      final clock = current ? _clockText() : '';
       if (p == SeatPos.top) {
         out.add(Positioned(
           left: c.dx - a / 2 - 120,
           width: 112,
-          top: c.dy - 8,
-          child: Text(label, textAlign: TextAlign.right, maxLines: 1, overflow: TextOverflow.ellipsis, style: MK.body(12, weight: FontWeight.w600)),
+          top: c.dy - (timed ? 17 : 8),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.end, mainAxisSize: MainAxisSize.min, children: [
+            Text(label, textAlign: TextAlign.right, maxLines: 1, overflow: TextOverflow.ellipsis, style: MK.body(12, weight: FontWeight.w600)),
+            if (timed) Text(clock.isEmpty ? ' ' : clock, key: ValueKey('clock-${sv.info.id}'), maxLines: 1, style: MK.body(12, weight: FontWeight.w700)),
+          ]),
         ));
       } else {
         out.add(Positioned(
           left: c.dx - g.sideW / 2,
           width: g.sideW,
           top: g.plateTop(p),
-          child: Text(label, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: _sidePlateStyle),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(label, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: _sidePlateStyle),
+            if (timed)
+              Text(clock.isEmpty ? ' ' : clock, key: ValueKey('clock-${sv.info.id}'), textAlign: TextAlign.center, maxLines: 1, style: _sideClockStyle),
+          ]),
         ));
       }
       for (var i = 0; i < shown; i++) {
@@ -1190,30 +1235,39 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   /// A seat's name plate: name, offline mark, and the turn clock ([clock]) when it's their turn.
-  static String _seatLabel(SeatView sv, String? clock) =>
-      '${sv.info.name}${sv.connected ? '' : ' (offline)'}${clock != null && clock.isNotEmpty ? '  $clock' : ''}';
+  static String _seatLabel(SeatView sv) => '${sv.info.name}${sv.connected ? '' : ' (offline)'}';
+
+  /// Whether turns have a clock (its line is kept on every opponent's name plate).
+  bool _timed(PlayerView pv) => pv.rules.turnSeconds > 0 || _deadline != null;
 
   static final _sidePlateStyle = MK.body(11, weight: FontWeight.w600);
+  static final _sideClockStyle = MK.body(11, weight: FontWeight.w700);
 
-  /// Height of each side seat's name plate (up to 2 lines), so its face-down rack starts below
-  /// it. Measured with room for the turn clock when there is one, so the rack doesn't jump
-  /// when their turn starts.
+  /// Height of each side seat's name plate (the name, up to 2 lines, then the clock line when
+  /// turns are timed), so its face-down rack starts below all of it.
   Map<SeatPos, double> _sidePlateHeights(PlayerView pv, double width, TextStyle base, TextScaler scaler) {
     final out = <SeatPos, double>{};
     final pos = _seatPositions(pv);
-    final timed = pv.rules.turnSeconds > 0 || _deadline != null;
+    final timed = _timed(pv);
+    var clockH = 0.0;
+    if (timed) {
+      final cp = TextPainter(text: TextSpan(text: '0:00', style: base.merge(_sideClockStyle)), textDirection: TextDirection.ltr, textScaler: scaler)
+        ..layout();
+      clockH = cp.height;
+      cp.dispose();
+    }
     for (final sv in pv.seats) {
       final p = pos[sv.info.id];
       if (p == null || p == SeatPos.top) continue;
       final tp = TextPainter(
-        text: TextSpan(text: _seatLabel(sv, timed ? '0:00' : null), style: base.merge(_sidePlateStyle)),
+        text: TextSpan(text: _seatLabel(sv), style: base.merge(_sidePlateStyle)),
         textAlign: TextAlign.center,
         textDirection: TextDirection.ltr,
         textScaler: scaler,
         maxLines: 2,
         ellipsis: '…',
       )..layout(maxWidth: width);
-      out[p] = tp.height;
+      out[p] = tp.height + clockH;
       tp.dispose();
     }
     return out;
@@ -1323,8 +1377,33 @@ class _GameScreenState extends State<GameScreen> {
     ];
   }
 
-  Widget _sortLabel(String text) =>
-      Text(text, style: MK.body(15, color: MK.goldLight, weight: FontWeight.w800).copyWith(height: 1.0));
+  Widget _sortLabel(String text, bool selected) =>
+      Text(text, style: MK.body(15, color: selected ? Colors.black : MK.goldLight, weight: FontWeight.w800).copyWith(height: 1.0));
+
+  /// A brief bright pulse around the rack when my turn starts.
+  Widget _turnPulse(TableGeo g) => Positioned.fromRect(
+        rect: g.rackRect.inflate(8),
+        child: IgnorePointer(
+          child: TweenAnimationBuilder<double>(
+            key: ValueKey('turnPulse$_turnPulseSeq'),
+            tween: Tween(begin: 0, end: 1),
+            duration: const Duration(milliseconds: TableTuning.turnPulseMs),
+            builder: (_, t, _) {
+              // Quick rise, softer fade.
+              final a = t < .2 ? t / .2 : math.pow(1 - (t - .2) / .8, 1.6).toDouble();
+              if (a <= 0) return const SizedBox.shrink();
+              return DecoratedBox(
+                key: const ValueKey('turnPulse'),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  color: Colors.white.withValues(alpha: .22 * a),
+                  boxShadow: [BoxShadow(color: const Color(0xFFFFF3C4).withValues(alpha: .85 * a), blurRadius: 34, spreadRadius: 8)],
+                ),
+              );
+            },
+          ),
+        ),
+      );
 
   List<Widget> _sprites(TableGeo g, PlayerView pv, List<int> rack) {
     final out = <Widget>[];

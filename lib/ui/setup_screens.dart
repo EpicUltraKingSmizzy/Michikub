@@ -60,11 +60,29 @@ class _PracticeSetupScreenState extends State<PracticeSetupScreen> {
       });
   late HouseRules rules = prefs.rules;
 
+  void _start() {
+    prefs.practiceBots = List.of(bots);
+    prefs.rules = rules;
+    prefs.save();
+    final players = [
+      PlayerInfo('me', prefs.name, SeatKind.human),
+      for (final (i, robot) in robots.indexed)
+        PlayerInfo('bot$i', '${robot.name} (${levelName(bots[i])})', SeatKind.bot, level: bots[i], avatar: robot.avatar),
+    ];
+    startLocalGame(context, players, rules, hotSeat: false);
+  }
+
   @override
   Widget build(BuildContext context) {
     return MkScaffold(
       title: 'Practice vs bots',
-      actions: const [_TestBadge()],
+      actions: [
+        const _TestBadge(),
+        Padding(
+          padding: const EdgeInsets.only(left: 8, right: 4),
+          child: GoldButton('Start practice', key: const ValueKey('start'), icon: Icons.play_arrow, compact: true, onPressed: _start),
+        ),
+      ],
       body: ListView(padding: const EdgeInsets.fromLTRB(20, 4, 20, 20), children: [
         MkPanel(
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -121,20 +139,6 @@ class _PracticeSetupScreenState extends State<PracticeSetupScreen> {
         ),
         const SizedBox(height: 12),
         MkPanel(child: RulesEditor(rules: rules, onChanged: (r) => setState(() => rules = r))),
-        const SizedBox(height: 14),
-        Center(
-          child: GoldButton('Start practice', icon: Icons.play_arrow, onPressed: () {
-            prefs.practiceBots = List.of(bots);
-            prefs.rules = rules;
-            prefs.save();
-            final players = [
-              PlayerInfo('me', prefs.name, SeatKind.human),
-              for (final (i, robot) in robots.indexed)
-                PlayerInfo('bot$i', '${robot.name} (${levelName(bots[i])})', SeatKind.bot, level: bots[i], avatar: robot.avatar),
-            ];
-            startLocalGame(context, players, rules, hotSeat: false);
-          }),
-        ),
       ]),
     );
   }
@@ -155,11 +159,25 @@ class _HotSeatSetupScreenState extends State<HotSeatSetupScreen> {
   ];
   late HouseRules rules = prefs.rules;
 
+  void _start() {
+    final ns = [for (var i = 0; i < names.length; i++) names[i].text.trim().isEmpty ? 'Player ${i + 1}' : names[i].text.trim()];
+    prefs.hotSeatNames = ns;
+    prefs.rules = rules;
+    prefs.save();
+    startLocalGame(context, [for (var i = 0; i < ns.length; i++) PlayerInfo('p$i', ns[i], SeatKind.human)], rules, hotSeat: true);
+  }
+
   @override
   Widget build(BuildContext context) {
     return MkScaffold(
       title: 'Pass-and-play',
-      actions: const [_TestBadge()],
+      actions: [
+        const _TestBadge(),
+        Padding(
+          padding: const EdgeInsets.only(left: 8, right: 4),
+          child: GoldButton('Start', key: const ValueKey('start'), icon: Icons.play_arrow, compact: true, onPressed: _start),
+        ),
+      ],
       body: ListView(padding: const EdgeInsets.fromLTRB(20, 4, 20, 20), children: [
         MkPanel(
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -189,16 +207,6 @@ class _HotSeatSetupScreenState extends State<HotSeatSetupScreen> {
         ),
         const SizedBox(height: 12),
         MkPanel(child: RulesEditor(rules: rules, onChanged: (r) => setState(() => rules = r))),
-        const SizedBox(height: 14),
-        Center(
-          child: GoldButton('Start', icon: Icons.play_arrow, onPressed: () {
-            final ns = [for (var i = 0; i < names.length; i++) names[i].text.trim().isEmpty ? 'Player ${i + 1}' : names[i].text.trim()];
-            prefs.hotSeatNames = ns;
-            prefs.rules = rules;
-            prefs.save();
-            startLocalGame(context, [for (var i = 0; i < ns.length; i++) PlayerInfo('p$i', ns[i], SeatKind.human)], rules, hotSeat: true);
-          }),
-        ),
       ]),
     );
   }

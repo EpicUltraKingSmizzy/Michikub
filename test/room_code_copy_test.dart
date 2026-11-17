@@ -11,12 +11,12 @@ void main() {
       return null;
     });
     addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
-    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: Center(child: RoomCode('K7MQ2P')))));
-    await tester.longPress(find.text('K7MQ2P'));
+    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: Center(child: RoomCode('KTMQZP')))));
+    await tester.longPress(find.text('KTMQZP'));
     await tester.pump();
     final copy = calls.where((c) => c.method == 'Clipboard.setData').toList();
     expect(copy, hasLength(1));
-    expect((copy.single.arguments as Map)['text'], 'K7MQ2P');
+    expect((copy.single.arguments as Map)['text'], 'KTMQZP');
     expect(calls.any((c) => c.method == 'HapticFeedback.vibrate' && c.arguments == 'HapticFeedbackType.lightImpact'), true);
     expect(find.text('Code copied'), findsOneWidget);
     await tester.pump(const Duration(seconds: 3));

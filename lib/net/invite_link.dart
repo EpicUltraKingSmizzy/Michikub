@@ -19,14 +19,14 @@ String inviteShareText(String code) {
 String? codeFromAppLink(Uri uri) {
   if (uri.scheme.toLowerCase() != 'michikub' || uri.host.toLowerCase() != 'join') return null;
   final seg = uri.pathSegments.where((s) => s.isNotEmpty).firstOrNull;
-  if (seg == null || !RegExp(r'^[A-Za-z0-9]{4,8}$').hasMatch(seg)) return null;
+  if (seg == null || !RegExp(r'^[A-Za-z]{4,8}$').hasMatch(seg)) return null;
   return seg.toUpperCase();
 }
 
-/// The room code in a join link (or a bare code), or null if there isn't one.
+/// The room code (letters only) in a join link (or a bare code), or null if there isn't one.
 String? codeFromJoinLink(String text) {
-  final m = RegExp(r'michikub://join/([A-Za-z0-9]+)').firstMatch(text);
+  final m = RegExp(r'michikub://join/([A-Za-z]+)').firstMatch(text);
   if (m != null) return m.group(1)!.toUpperCase();
   final bare = text.trim().toUpperCase();
-  return RegExp(r'^[A-Z0-9]{4,8}$').hasMatch(bare) ? bare : null;
+  return RegExp(r'^[A-Z]{4,8}$').hasMatch(bare) ? bare : null;
 }

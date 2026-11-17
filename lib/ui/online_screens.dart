@@ -238,6 +238,9 @@ class _JoinScreenState extends State<JoinScreen> {
                 child: TextField(
                   controller: codeCtl,
                   textCapitalization: TextCapitalization.characters,
+                  keyboardType: TextInputType.text,
+                  autocorrect: false,
+                  enableSuggestions: false,
                   maxLength: 6,
                   // Pasting a whole invite ("Come play Michikub with me! ... michikub://join/ABCD") keeps just the code.
                   inputFormatters: [
@@ -246,6 +249,8 @@ class _JoinScreenState extends State<JoinScreen> {
                       final c = codeFromJoinLink(nu.text);
                       return c == null ? nu : TextEditingValue(text: c, selection: TextSelection.collapsed(offset: c.length));
                     }),
+                    // Codes are letters only: anything else typed is dropped (after a pasted invite is reduced to its code).
+                    FilteringTextInputFormatter.allow(RegExp('[A-Za-z]')),
                   ],
                   style: MK.code(22, letterSpacing: 4),
                   onTap: () {

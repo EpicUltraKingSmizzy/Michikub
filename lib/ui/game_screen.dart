@@ -50,10 +50,12 @@ class _Drag {
   bool get moved => (pointer - start).distance > 6;
 }
 
+/// A face-down tile flying from the pile to an opponent's face-down rack ([who]).
 class _BackFlight {
   final Key key = UniqueKey();
+  final String who;
   final Rect from, to;
-  _BackFlight(this.from, this.to);
+  _BackFlight(this.who, this.from, this.to);
 }
 
 class GameScreen extends StatefulWidget {
@@ -199,7 +201,7 @@ class _GameScreenState extends State<GameScreen> {
     final count = nv.seats.firstWhere((x) => x.info.id == who).count;
     for (var i = 0; i < n; i++) {
       final to = g.backRect(pos, count - n + i, count);
-      _flights.add(_BackFlight(g.pileRect, to));
+      _flights.add(_BackFlight(who, g.pileRect, to));
     }
   }
 
@@ -1042,6 +1044,10 @@ class _GameScreenState extends State<GameScreen> {
       final c = g.seatCenter(p);
       final current = pv.currentId == sv.info.id && pv.result == null;
       final a = g.avatar;
+      // Tiles still flying in from the pile aren't in the face-down rack (or the count) until
+      // they land. The rest keep the final layout, so a tile appears exactly where it landed.
+      final flying = _flights.where((f) => f.who == sv.info.id).length;
+      final shown = math.max(0, sv.count - flying);
       out.add(Positioned(
         left: c.dx - a / 2,
         top: c.dy - a / 2,
@@ -1053,7 +1059,7 @@ class _GameScreenState extends State<GameScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
               decoration: BoxDecoration(gradient: MK.goldGradient, borderRadius: BorderRadius.circular(9)),
-              child: Text('${sv.count}', style: MK.body(11, color: const Color(0xFF2A1404), weight: FontWeight.w800)),
+              child: Text('$shown', style: MK.body(11, color: const Color(0xFF2A1404), weight: FontWeight.w800)),
             ),
           ),
         ]),
@@ -1074,7 +1080,7 @@ class _GameScreenState extends State<GameScreen> {
           child: Text(label, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: MK.body(11, weight: FontWeight.w600)),
         ));
       }
-      for (var i = 0; i < sv.count; i++) {
+      for (var i = 0; i < shown; i++) {
         out.add(Positioned.fromRect(rect: g.backRect(p, i, sv.count), child: GoldBack(width: g.backW, height: g.backH)));
       }
     }

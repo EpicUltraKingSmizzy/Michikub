@@ -39,7 +39,8 @@ Board dropAt(Board bd, List<int> sel, int row, int col) {
     final blk = tmp.blockOf(tmp.rows[row][col])!;
     return Layout.bridge(tmp, Layout.dropInto(tmp, sel, blk.tiles.first, col - blk.start, col: col), sel);
   }
-  return Layout.bridge(tmp, Layout.place(tmp, sel, row, col), sel);
+  final beside = Layout.dropBeside(tmp, sel, row, col);
+  return Layout.bridge(tmp, beside ?? Layout.place(tmp, sel, row, col), sel);
 }
 
 void main() {
@@ -192,6 +193,77 @@ void main() {
     });
   });
 
+  group('wrong side: a drop right beside a set goes to the end where it fits', () {
+    test('blue 5 dropped just right of a blue 6 lands left of it: 5-6 (user example)', () {
+      final bd = boardOf([Block(0, 10, [b(6)])]);
+      expect(row0(dropAt(bd, [b(5)], 0, 11)), [
+        [b(5), b(6)],
+      ]);
+    });
+
+    test('just left of a run, fitting only on its right: 5-6-7 + 8 dropped left makes 5-6-7-8', () {
+      final bd = boardOf([Block(0, 10, [b(5), b(6), b(7)])]);
+      expect(row0(dropAt(bd, [b(8)], 0, 9)), [
+        [b(5), b(6), b(7), b(8)],
+      ]);
+    });
+
+    test('multi-tile piece: 5-6 dropped just right of 7-8-9 makes 5-6-7-8-9', () {
+      final bd = boardOf([Block(0, 8, [b(7), b(8), b(9)])]);
+      expect(row0(dropAt(bd, [b(5), b(6)], 0, 11)), [
+        [b(5), b(6), b(7), b(8), b(9)],
+      ]);
+    });
+
+    test('a piece whose last cell touches the set from the left: 9-10 dropped before 7-8 makes 7-8-9-10', () {
+      final bd = boardOf([Block(0, 12, [b(7), b(8)])]);
+      expect(row0(dropAt(bd, [b(9), b(10)], 0, 10)), [
+        [b(7), b(8), b(9), b(10)],
+      ]);
+    });
+
+    test('a group just joins, whichever side', () {
+      final bd = boardOf([Block(0, 10, [r(6), b(6)])]);
+      expect(row0(dropAt(bd, [y(6)], 0, 12)).single.toSet(), {r(6), b(6), y(6)});
+      expect(row0(dropAt(bd, [y(6)], 0, 9)).single.toSet(), {r(6), b(6), y(6)});
+    });
+
+    test('only directly adjacent: one empty space away it stays its own set', () {
+      final bd = boardOf([Block(0, 10, [b(6)])]);
+      final out = dropAt(bd, [b(5)], 0, 12);
+      expect(out.blockOf(b(5))!.tiles, [b(5)]);
+      expect(out.blockOf(b(6))!.tiles, [b(6)]);
+    });
+
+    test('no fit at either end: it stays where dropped and the set moves aside, as before', () {
+      final bd = boardOf([Block(0, 10, [b(6)])]);
+      final out = dropAt(bd, [r(9)], 0, 11);
+      expect(out.blockOf(r(9))!.tiles, [r(9)]);
+      expect(out.blockOf(b(6))!.tiles, [b(6)]);
+      expect(out.blockOf(b(6, 0))!.end, lessThan(out.find(r(9))!.col), reason: 'still apart');
+    });
+
+    test('at the row edge the set slides to make room: 6 at column 0, 5 dropped right of it', () {
+      final bd = boardOf([Block(0, 0, [b(6)])]);
+      expect(row0(dropAt(bd, [b(5)], 0, 1)), [
+        [b(5), b(6)],
+      ]);
+    });
+
+    test('combines with bridging: 4 _ 6 with the 5 dropped right of the 6 makes 4-5-6', () {
+      final bd = boardOf([Block(0, 8, [b(4)]), Block(0, 11, [b(6)])]);
+      expect(row0(dropAt(bd, [b(5)], 0, 12)), [
+        [b(4), b(5), b(6)],
+      ]);
+    });
+
+    test('bots are unaffected: Layout.place still keeps them apart', () {
+      final bd = boardOf([Block(0, 10, [b(6)])]);
+      final out = Layout.place(bd, [b(5)], 0, 11);
+      expect(out.blockOf(b(5))!.tiles, [b(5)]);
+    });
+  });
+
   group('game screen', () {
     late GameHost host;
     late LocalSession s;
@@ -237,6 +309,19 @@ void main() {
         expect(w.blockOf(y(5))!.tiles, [y(5), y(6), y(7)], reason: 'target ${tileLabel(target)}');
         await tearDown(tester);
       }
+    });
+
+    testWidgets('tap-move: the 5 (moved from elsewhere on the table) tapped onto the empty cell right of the 6 lands left of it', (tester) async {
+      final st = await setUp(tester, [b(5), b(6)]);
+      st.debugSetWorking(boardOf([Block(0, 10, [b(6)]), Block(2, 4, [b(5)])]));
+      await tester.pump(const Duration(seconds: 1)); // the rack settles
+      await tester.tap(find.byKey(ValueKey(b(5))));
+      await tester.pump(const Duration(milliseconds: 400));
+      final six = tester.getRect(find.byKey(ValueKey(b(6))));
+      await tester.tapAt(six.center + Offset(six.width * 1.05, 0));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect((st.debugWorking as Board).blockOf(b(6))!.tiles, [b(5), b(6)]);
+      await tearDown(tester);
     });
 
     testWidgets('item 1: an invalid-move message sits above the board, clear of every table tile', (tester) async {

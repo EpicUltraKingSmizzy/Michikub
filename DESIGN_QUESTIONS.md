@@ -235,3 +235,11 @@ Most numbers live in a small set of constants: `BotTuning` (lib/engine/bot.dart)
     - **Tap and drag:** both work the same, whether you tap a set, drag onto it, tap an empty cell, or long-press a piece and tap a spot.
     - **When it doesn't happen:** after a split (#108), the joker swap, or putting a tile into the middle of a run.
     - **Bots:** they place sets their own way and don't bridge.
+110. **Dropping a tile on the wrong side of a set** *(New after v0.1.10, your request.)* If you drop or tap tiles onto the empty space right next to a set, on a side where they don't fit, they go to the set's other end if they fit there. A blue 5 dropped just right of a blue 6 makes 5-6.
+    - **Directly next to the set only:** the dropped tiles must touch the set in the same row. One empty space away, they stay their own set, as before.
+    - **Multi-tile pieces:** a 5-6 dropped just right of 7-8-9 makes 5-6-7-8-9.
+    - **Unfinished sets:** a set of 1-2 tiles takes them if the result could still become valid, like tapping a tile onto it.
+    - **Groups:** the order doesn't matter, so the tiles just join where they were dropped (as they already did).
+    - **No room at the other end:** the set slides along the row to make room, the same as attaching by tap. If the tiles fit at neither end, nothing changes: they stay where dropped and the set moves aside.
+    - **Bridging (#109):** after the fix, the set can still join a neighbour across a gap. 4 _ 6 + the 5 dropped right of the 6 makes 4-5-6.
+    - **Where it applies:** dragging, and tapping an empty cell with tiles selected. A long-pressed piece that you tap onto a spot still lands as its own set. Bots are unaffected.

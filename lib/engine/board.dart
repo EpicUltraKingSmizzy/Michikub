@@ -343,6 +343,37 @@ class Layout {
     return place(b, right, blk.row, blk.start + left.length + 1, merge: false);
   }
 
+  /// Wrong side: [tiles] dropped (or tapped) onto the empty cell right next to a set in [row]
+  /// (touching it, as [place] reads touching) where they don't fit, but would fit at that set's
+  /// other end: they go to the other end. A blue 5 dropped just right of a blue 6 makes 5-6;
+  /// a 5-6 piece dropped just right of 7-8-9 makes 5-6-7-8-9. A set still being built (1-2
+  /// tiles) takes them if the result could still become a valid set, like tap-to-attach.
+  /// [board] is the table without [tiles]. Returns null when nothing touches, the touched side
+  /// already fits ([place] joins them there), or the other end doesn't fit either. Groups
+  /// accept tiles on either side, so [place] already joins them. Only the player's moves use
+  /// this (not bots).
+  static Board? dropBeside(Board board, List<int> tiles, int row, int col) {
+    if (tiles.isEmpty || row < 0 || row >= board.rowCount) return null;
+    final len = tiles.length;
+    col = col.clamp(0, Board.width - len);
+    for (var c = col; c < col + len; c++) {
+      if (board.rows[row][c] >= 0) return null; // a drop onto a set: dropInto's job
+    }
+    final blocks = board.blocksInRow(row);
+    final left = _firstOrNull(blocks, (x) => x.end == col);
+    final right = _firstOrNull(blocks, (x) => x.start > col && x.start <= col + len);
+    if (left != null && right != null && isCompatible([...left.tiles, ...tiles, ...right.tiles])) return null;
+    for (final (nb, onRight) in [(left, true), (right, false)]) {
+      if (nb == null) continue;
+      final touched = onRight ? [...nb.tiles, ...tiles] : [...tiles, ...nb.tiles];
+      if (isCompatible(touched)) return null; // fits where dropped: place joins it
+      final end = attachEnd(nb.tiles, tiles, onRight ? nb.length : 0, allowPartial: true);
+      if (end == null || end == (onRight ? nb.length : 0)) continue;
+      return insertInto(board, tiles, nb.tiles.first, end);
+    }
+    return null;
+  }
+
   /// Bridging, after the player put [sel] on the table (tap or drag). [pre] is the table
   /// before, without [sel]; [post] the table after. Sets in the same row with only empty
   /// spaces between them join the set [sel] ended up in, whole, when the result is a valid set:

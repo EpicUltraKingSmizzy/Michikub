@@ -743,7 +743,9 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       final idx = (col - blk.start) + (frac > .5 ? 1 : 0);
       return Layout.bridge(tmp, Layout.dropInto(tmp, tiles, blk.tiles.first, idx, col: col), tiles);
     }
-    return Layout.bridge(tmp, Layout.place(tmp, tiles, row, col), tiles);
+    // Dropped right beside a set on the side it doesn't fit: it goes to the end where it does.
+    final beside = row < tmp.rowCount ? Layout.dropBeside(tmp, tiles, row, col) : null;
+    return Layout.bridge(tmp, beside ?? Layout.place(tmp, tiles, row, col), tiles);
   }
 
   void _onTap(int t) {

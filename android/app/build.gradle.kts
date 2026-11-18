@@ -29,6 +29,15 @@ android {
         versionName = flutter.versionName
     }
 
+    // Smaller APK for sending in chat: `ORG_GRADLE_PROJECT_compressLibs=true flutter build apk ...`
+    // compresses the native libraries (they're unpacked at install, so it uses more space on the
+    // phone). Normal builds keep them uncompressed.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = project.hasProperty("compressLibs")
+        }
+    }
+
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.

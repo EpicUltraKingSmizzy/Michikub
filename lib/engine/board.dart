@@ -429,19 +429,26 @@ class Layout {
     }
   }
 
-  /// Where a bot puts a new set: the row that already has tiles but the fewest of them (top
-  /// row first on a tie), where it fits; otherwise the usual spot ([findSpotForNewSet]).
+  /// Where a bot puts a new set: of the starting rows and the rows with tiles, the one with
+  /// the fewest tiles where it fits (top row first on a tie).
   static ({Board board, int row, int col}) findSpotForBotSet(Board board, int len) {
-    int count(int r) => board.rows[r].where((t) => t >= 0).length;
-    final rows = [...board.usedRows]..sort((a, c) => count(a) != count(c) ? count(a) - count(c) : a - c);
+    // Candidates: the starting rows (blank ones count as 0 tiles, so they win) and any other
+    // row with tiles. Never a blank row further down.
+    final b = board.copy()..ensureRows(LayoutTuning.viewRows);
+    int count(int r) => b.rows[r].where((t) => t >= 0).length;
+    final rows = {for (var r = 0; r < LayoutTuning.viewRows; r++) r, ...b.usedRows}.toList()
+      ..sort((a, c) => count(a) != count(c) ? count(a) - count(c) : a - c);
     for (final r in rows) {
-      final blocks = board.blocksInRow(r);
+      final blocks = b.blocksInRow(r);
+      if (blocks.isEmpty) return (board: b, row: r, col: (Board.width - len) ~/ 2);
       final after = blocks.last.end + 1;
-      if (board.fits(r, after, len)) return (board: board.copy(), row: r, col: after);
-      final s = board.nearestFit(r, len, 0);
-      if (s != null) return (board: board.copy(), row: r, col: s);
+      if (b.fits(r, after, len)) return (board: b, row: r, col: after);
+      final s = b.nearestFit(r, len, 0);
+      if (s != null) return (board: b, row: r, col: s);
     }
-    return findSpotForNewSet(board, len);
+    // Everything is full: a new row at the bottom.
+    b.addRow();
+    return (board: b, row: b.rowCount - 1, col: 0);
   }
 
   static void _collapseLoneSets(Board b) {

@@ -210,4 +210,43 @@ void main() {
     expect(tapped, true);
     expect(log, [Sfx.click]);
   });
+
+  testWidgets('bug: the turn-start pulse plays once, not again when a tile is played', (tester) async {
+    await setUpGame(tester);
+    host.handle('p0', const DrawAction()); // Bob's turn
+    await tester.pump(const Duration(seconds: 2));
+    host.handle('p1', const DrawAction()); // Ann's turn: the pulse
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.byKey(const ValueKey('turnPulse')), findsOneWidget);
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.byKey(const ValueKey('turnPulse')), findsNothing);
+    // Play tiles from the rack to the table, one by one: no pulse.
+    for (var i = 0; i < 3; i++) {
+      final tile = s.view!.rack.firstWhere((t) => find.byKey(ValueKey(t)).evaluate().isNotEmpty && !(host.preview?.allTiles.contains(t) ?? false));
+      if (i == 0) {
+        await tester.tap(find.byKey(ValueKey(tile)));
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.tapAt(const Offset(300, 120));
+      } else {
+        // Dragged (drop hints show while dragging).
+        final from = tester.getCenter(find.byKey(ValueKey(tile)));
+        final g = await tester.startGesture(from);
+        await tester.pump(const Duration(milliseconds: 50));
+        final to = Offset(300 + i * 250.0, 120 + i * 60.0);
+        for (var k = 1; k <= 8; k++) {
+          await g.moveTo(Offset.lerp(from, to, k / 8)!);
+          await tester.pump(const Duration(milliseconds: 30));
+          expect(find.byKey(const ValueKey('turnPulse')), findsNothing);
+        }
+        await g.up();
+      }
+      for (var f = 0; f < 10; f++) {
+        await tester.pump(const Duration(milliseconds: 40));
+        expect(find.byKey(const ValueKey('turnPulse')), findsNothing);
+      }
+    }
+    expect(host.preview?.allTiles.length ?? 0, 3);
+    await tearDownGame(tester);
+  });
 }

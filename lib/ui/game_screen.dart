@@ -1658,7 +1658,10 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       Text(text, style: MK.body(15, color: selected ? Colors.black : MK.goldLight, weight: FontWeight.w800).copyWith(height: 1.0));
 
   /// A brief bright pulse around the rack when my turn starts.
+  /// Keyed so it keeps its animation when the widgets before it change (drop hints appear
+  /// while dragging): unkeyed, it was rebuilt and the pulse played again.
   Widget _turnPulse(TableGeo g) => Positioned.fromRect(
+        key: ValueKey('turnPulseBox$_turnPulseSeq'),
         rect: g.rackRect.inflate(8),
         child: IgnorePointer(
           child: TweenAnimationBuilder<double>(

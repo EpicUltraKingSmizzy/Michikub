@@ -20,17 +20,45 @@ Board boardOf(List<Block> blocks) {
 int count(Board bd, int row) => bd.rows[row].where((t) => t >= 0).length;
 
 void main() {
-  group('item 4: bots put a new set in the row with tiles but the fewest', () {
-    test('the emptier used row, not the first row', () {
+  group('item 4: bots put a new set in the least populated row', () {
+    test('an empty starting row wins (counts as 0)', () {
       final bd = boardOf([
         Block(0, 2, [r(1), r(2), r(3), r(4), r(5)]),
         Block(0, 10, [b(1), b(2), b(3)]),
         Block(1, 5, [k(1), k(2), k(3)]),
       ]);
       final out = applyBotStep(bd, BotStep.newSet([y(7), y(8), y(9)]));
-      expect(out.find(y(7))!.row, 1);
+      expect(out.find(y(7))!.row, 2);
+      expect(out.blockOf(y(7))!.tiles, [y(7), y(8), y(9)]);
     });
-    test('an empty table: the usual spot', () {
+    test('the starting rows all used: the one with the fewest tiles', () {
+      final bd = boardOf([
+        Block(0, 2, [r(1), r(2), r(3), r(4), r(5)]),
+        Block(1, 5, [k(1), k(2), k(3)]),
+        Block(2, 2, [b(1), b(2), b(3), b(4)]),
+      ]);
+      expect(applyBotStep(bd, BotStep.newSet([y(7), y(8), y(9)])).find(y(7))!.row, 1);
+    });
+    test('a used row below the first 3 counts; a blank one below them never does', () {
+      final bd = boardOf([
+        Block(0, 0, [r(1), r(2), r(3), r(4), r(5)]),
+        Block(1, 0, [k(1), k(2), k(3), k(4), k(5)]),
+        Block(2, 0, [b(1), b(2), b(3), b(4), b(5)]),
+        Block(3, 0, [y(1), y(2), y(3)]),
+      ]);
+      // Row 4 is blank (Board.empty has 5 rows): not a candidate.
+      expect(applyBotStep(bd, BotStep.newSet([y(7), y(8), y(9)])).find(y(7))!.row, 3);
+    });
+    test('no room in the emptiest row: the next fewest', () {
+      final bd = boardOf([
+        for (var c = 0; c < 10; c++) Block(0, c, [r(1 + c)]),
+        for (var c = 0; c < 27; c += 3) Block(1, c, [k(1 + c ~/ 3)]),
+        for (var c = 0; c < 11; c++) Block(2, c, [b(1 + c)]),
+      ]);
+      expect(count(bd, 1), 9);
+      expect(applyBotStep(bd, BotStep.newSet([y(7), y(8), y(9)])).find(y(7))!.row, 0);
+    });
+    test('an empty table: the top row', () {
       final out = applyBotStep(Board.empty(), BotStep.newSet([y(7), y(8), y(9)]));
       expect(out.find(y(7))!.row, 0);
     });

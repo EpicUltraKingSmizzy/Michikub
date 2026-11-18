@@ -14,13 +14,13 @@ import sys
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-# Picker order: file name prefix -> asset name.
+# Picker order: source file name (without .jpg/.png) -> asset name.
 ART = [
-    ('4304fedd', 'punk_pig'), ('8e080148', 'wizard_cow'), ('e010da8e', 'dog_white_hat'),
-    ('5dc4b3f5', 'grumpy_cat'), ('f82bbc13', 'sun'), ('e4614c2c', 'sleepy_moon'),
-    ('0a8c5e7d', 'horse_carrot'), ('7b32178b', 'sunflower'), ('aec079fa', 'coffee_mug'),
-    ('02f1f264', 'skull'), ('6839d5a4', 'ghost'), ('515a5e64', 'raccoon'),
-    ('f6417e61', 'parrot'), ('54f444a2', 'fox'), ('6ffcecf5', 'hamster'), ('3a8fcbd9', 'cactus'),
+    ('pig', 'punk_pig'), ('cow', 'wizard_cow'), ('dog', 'dog_white_hat'),
+    ('cat', 'grumpy_cat'), ('sun', 'sun'), ('moon', 'sleepy_moon'),
+    ('horse', 'horse_carrot'), ('sunflower', 'sunflower'), ('coffee', 'coffee_mug'),
+    ('skull', 'skull'), ('ghost', 'ghost'), ('raccoon', 'raccoon'),
+    ('parrot', 'parrot'), ('fox', 'fox'), ('hamster', 'hamster'), ('cactus', 'cactus'),
 ]
 SIZE = 256
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -58,7 +58,7 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
     made = []
     for prefix, name in ART:
-        files = glob.glob(os.path.join(src_dir, prefix + '*.jpg')) + glob.glob(os.path.join(src_dir, prefix + '*.png'))
+        files = [f for f in (os.path.join(src_dir, prefix + e) for e in ('.jpg', '.png')) if os.path.exists(f)]
         if not files:
             print('missing', prefix, name)
             continue

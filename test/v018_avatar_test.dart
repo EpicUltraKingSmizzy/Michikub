@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -14,7 +15,12 @@ void main() {
     final c = avatarChoices;
     expect(c.length, kAvatarSlots);
     expect(c.toSet().length, c.length);
-    expect(c.first, startsWith('assets/'));
+    expect(c.take(16), kAvatarArt);
+    expect(c.first, 'assets/avatars/punk_pig.png');
+    expect(c[16], startsWith('assets/bots/'));
+    for (final a in kAvatarArt) {
+      expect(File(a).existsSync(), true, reason: a);
+    }
     expect(c.last, startsWith('color:'));
     expect(isKnownAvatar('color:3'), true);
     expect(isKnownAvatar('http://evil'), false);

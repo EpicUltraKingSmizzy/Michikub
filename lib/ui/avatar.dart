@@ -34,13 +34,15 @@ class PlayerAvatar extends StatelessWidget {
     // [image] is an avatar id (see avatars.dart): a picture, or a letter avatar's colour.
     final image = avatarImage(this.image);
     final color = avatarColor(this.image) ?? this.color;
+    // The drawn avatars (assets/avatars/) carry their own gold ring, so they replace the frame's.
+    final ownRing = image != null && image.startsWith('assets/avatars/');
     final face = Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: image != null ? const Color(0xFF16100C) : color,
-        border: Border.all(color: ringColor, width: ringWidth),
+        border: ownRing ? null : Border.all(color: ringColor, width: ringWidth),
         boxShadow: [
           if (current) const BoxShadow(color: Color(0xAAFFD36B), blurRadius: 14, spreadRadius: 2),
           const BoxShadow(color: Colors.black54, blurRadius: 5, offset: Offset(0, 2)),
@@ -49,7 +51,7 @@ class PlayerAvatar extends StatelessWidget {
       alignment: Alignment.center,
       child: image != null
           ? ClipOval(
-              child: Image.asset(image, width: inner, height: inner, fit: BoxFit.cover, filterQuality: FilterQuality.medium),
+              child: Image.asset(image, width: ownRing ? size : inner, height: ownRing ? size : inner, fit: BoxFit.cover, filterQuality: FilterQuality.medium),
             )
           : Text(
               name.isEmpty ? '?' : name.characters.first.toUpperCase(),

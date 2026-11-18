@@ -31,6 +31,11 @@ class TableTuning {
 
   /// The bright pulse around your rack when your turn starts.
   static const turnPulseMs = 650;
+
+  /// Quick chat: how long a phrase bubble and an emoji stay up before fading out.
+  static const chatTextMs = 3000;
+  static const chatEmojiMs = 2000;
+  static const chatFadeMs = 400;
   static const flashMs = 650;
   static const shineMs = 750;
   static const toastMs = 2600;
@@ -62,7 +67,11 @@ class _BackFlight {
   final Key key = UniqueKey();
   final String who;
   final Rect from, to;
-  _BackFlight(this.who, this.from, this.to);
+
+  /// A tile going back from the table to an opponent's rack (shown face up, turning face
+  /// down as it lands); null for a face-down draw from the pile.
+  final int? tile;
+  _BackFlight(this.who, this.from, this.to, [this.tile]);
 }
 
 class GameScreen extends StatefulWidget {
@@ -130,6 +139,12 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
 
   /// The results panel is minimised to show the final table.
   bool _resultsHidden = false;
+
+  /// Quick chat: the picker is open; the latest message per seat (shown, then faded out);
+  /// the last chat seq handled.
+  bool _chatOpen = false;
+  final Map<String, ChatMsg> _bubbles = {};
+  int _chatSeen = 0;
 
   /// Practice / Pass-and-play paused because the app went to the background.
   bool _bgPaused = false;
@@ -224,6 +239,17 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       _turnPulseSeq++;
     }
 
+    if (!seatChanged && !old.myTurn && old.result == null && nv.result == null && nv.round == old.round) {
+      // An opponent took tiles back from the table (or reset, or drew after trying): they fly
+      // from the table into their face-down rack, after any tiles they draw now.
+      final who = old.currentId;
+      final now = nv.board.allTiles.toSet();
+      final back = [for (final t in old.board.allTiles) if (!now.contains(t) && !nv.rack.contains(t)) t];
+      if (back.isNotEmpty && who != nv.me) {
+        final drawing = nv.drawSeq != _drawSeq && nv.drawPlayer == who ? nv.drawCount : 0;
+        _flyTilesBack(nv, who, old.board, back, drawing);
+      }
+    }
     if (!seatChanged) {
       if (nv.drawSeq != _drawSeq && nv.drawPlayer != null) {
         if (nv.drawPlayer == nv.me) {
@@ -241,6 +267,14 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       }
     }
     _drawSeq = nv.drawSeq;
+    for (final c in s.chats.where((c) => c.seq > _chatSeen)) {
+      _chatSeen = c.seq;
+      _bubbles[c.from] = c;
+      final ms = (c.isEmoji ? TableTuning.chatEmojiMs : TableTuning.chatTextMs) + TableTuning.chatFadeMs;
+      Timer(Duration(milliseconds: ms), () {
+        if (mounted && _bubbles[c.from]?.seq == c.seq) setState(() => _bubbles.remove(c.from));
+      });
+    }
     if (nv.noticeSeq != _noticeSeq) {
       if (_noticeSeq >= 0 && nv.notice != null) _showToast(nv.notice!);
       _noticeSeq = nv.noticeSeq;
@@ -281,6 +315,23 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     for (var i = 0; i < n; i++) {
       final to = g.backRect(pos, count - n + i, count);
       _flights.add(_BackFlight(who, g.pileRect, to));
+    }
+  }
+
+  /// Tiles [back] leaving the table ([from] is the table they were on) for [who]'s rack. They
+  /// land in the face-down slots just before the last [after] (tiles drawn at the same time).
+  void _flyTilesBack(PlayerView nv, String who, Board from, List<int> back, int after) {
+    final g = _geo;
+    if (g == null) return;
+    final pos = _seatPositions(nv)[who];
+    if (pos == null) return;
+    final count = nv.seats.firstWhere((x) => x.info.id == who).count;
+    final n = back.length;
+    for (var i = 0; i < n; i++) {
+      final at = from.find(back[i]);
+      if (at == null) continue;
+      final to = g.backRect(pos, count - after - n + i, count);
+      _flights.add(_BackFlight(who, g.cellRect(at.row, at.col), to, back[i]));
     }
   }
 
@@ -969,8 +1020,11 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                       key: f.key,
                       from: f.from,
                       to: f.to,
+                      tile: f.tile,
                       onDone: () => setState(() => _flights.remove(f)),
                     ),
+                  ..._chatBubbles(g, pv),
+                  if (_chatOpen) ..._chatPicker(g),
                   if (_toast != null) _toastWidget(g),
                   if (_starterBanner != null && pv.result == null && s.coverFor == null) _starterBannerWidget(g, _starterBanner!),
                   if (s.status != null) _statusBanner(g, s.status!),
@@ -1188,6 +1242,130 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     );
   }
 
+  /// Where my own avatar is (bottom-left corner), matching [_myCorner].
+  Rect _myAvatarRect(TableGeo g) {
+    final a = g.avatar * 1.1;
+    return Rect.fromLTWH(10, g.size.height - 8 - a, a, a);
+  }
+
+  /// Quick chat picker: across my rack area (covering as little of the table as it can), with
+  /// the phrases, the emojis and a close button. Tapping outside closes it; sending closes it.
+  List<Widget> _chatPicker(TableGeo g) {
+    final w = g.size.width;
+    final left = math.max(8.0, g.rackRect.left - 60);
+    final right = math.min(w - 8, g.rackRect.right + 60);
+    final h = math.max(g.rackRect.height + 6, 92.0);
+    void close() => setState(() => _chatOpen = false);
+    void send(String t) {
+      s.sendChat(t);
+      close();
+    }
+
+    Widget chip(String t, {bool emoji = false}) => Padding(
+          padding: const EdgeInsets.all(2),
+          child: Material(
+            color: emoji ? Colors.transparent : const Color(0xFF3A160C),
+            shape: emoji ? const CircleBorder() : StadiumBorder(side: BorderSide(color: MK.gold.withValues(alpha: .8))),
+            child: InkWell(
+              key: ValueKey('chat:$t'),
+              customBorder: emoji ? const CircleBorder() : const StadiumBorder(),
+              onTap: () => send(t),
+              child: Padding(
+                padding: emoji ? const EdgeInsets.all(4) : const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                child: Text(t, style: emoji ? const TextStyle(fontSize: 24, height: 1.1) : MK.body(14, weight: FontWeight.w700, color: MK.goldLight)),
+              ),
+            ),
+          ),
+        );
+
+    return [
+      Positioned.fill(
+        child: GestureDetector(key: const ValueKey('chatBarrier'), behavior: HitTestBehavior.opaque, onTap: close),
+      ),
+      Positioned(
+        left: left,
+        width: right - left,
+        bottom: 2,
+        height: h,
+        child: Container(
+          key: const ValueKey('chatPicker'),
+          decoration: BoxDecoration(
+            color: const Color(0xF21A0805),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: MK.gold, width: 1.2),
+            boxShadow: const [BoxShadow(color: Colors.black87, blurRadius: 14)],
+          ),
+          padding: const EdgeInsets.fromLTRB(8, 4, 2, 4),
+          child: Row(children: [
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                  Wrap(children: [for (final t in kQuickChatPhrases) chip(t)]),
+                  Wrap(children: [for (final t in kQuickChatEmojis) chip(t, emoji: true)]),
+                ]),
+              ),
+            ),
+            IconButton(key: const ValueKey('chatClose'), onPressed: close, icon: const Icon(Icons.close, color: MK.goldLight)),
+          ]),
+        ),
+      ),
+    ];
+  }
+
+  /// Chat messages beside each player's avatar: phrases in a speech bubble (3 s), emojis on
+  /// their own (2 s), then a short fade. Right seat: to the left of the avatar; left seat: to
+  /// the right; top seat: below; me: above my avatar.
+  List<Widget> _chatBubbles(TableGeo g, PlayerView pv) {
+    final out = <Widget>[];
+    final pos = _seatPositions(pv);
+    for (final c in _bubbles.values) {
+      final Rect av;
+      final SeatPos? p = pos[c.from];
+      if (c.from == pv.me) {
+        av = _myAvatarRect(g);
+      } else if (p != null) {
+        av = Rect.fromCenter(center: g.seatCenter(p), width: g.avatar, height: g.avatar);
+      } else {
+        continue;
+      }
+      final body = c.isEmoji
+          ? Text(c.text, style: const TextStyle(fontSize: 30, height: 1.1))
+          : Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF6DC),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: MK.gold, width: 1.2),
+                boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 6, offset: Offset(0, 2))],
+              ),
+              child: Text(c.text, maxLines: 1, style: MK.body(14, weight: FontWeight.w800, color: const Color(0xFF2A1404))),
+            );
+      final total = (c.isEmoji ? TableTuning.chatEmojiMs : TableTuning.chatTextMs) + TableTuning.chatFadeMs;
+      final faded = TweenAnimationBuilder<double>(
+        key: ValueKey('chatAnim${c.seq}'),
+        tween: Tween(begin: 0, end: 1),
+        duration: Duration(milliseconds: total),
+        builder: (_, t, child) {
+          final fadeFrom = 1 - TableTuning.chatFadeMs / total;
+          return Opacity(opacity: t < fadeFrom ? 1 : ((1 - t) / (1 - fadeFrom)).clamp(0.0, 1.0), child: child);
+        },
+        child: IgnorePointer(child: KeyedSubtree(key: ValueKey('chat-${c.from}'), child: body)),
+      );
+      const gap = 6.0;
+      final w = g.size.width, h = g.size.height;
+      if (c.from == pv.me) {
+        out.add(Positioned(left: av.left, bottom: h - av.top + 46, child: faded));
+      } else if (p == SeatPos.right) {
+        out.add(Positioned(right: w - av.left + gap + 8, top: av.center.dy - 16, child: faded));
+      } else if (p == SeatPos.left) {
+        out.add(Positioned(left: av.right + gap + 8, top: av.center.dy - 16, child: faded));
+      } else {
+        out.add(Positioned(left: av.left - 10, top: av.bottom + gap + 4, child: faded));
+      }
+    }
+    return out;
+  }
+
   void _showRobot(SeatView sv, RobotProfile robot) {
     showDialog<void>(
       context: context,
@@ -1239,7 +1417,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
         top: c.dy - a / 2,
         child: Stack(clipBehavior: Clip.none, children: [
           _avatar(sv, a, current: current),
-          _countBadge(shown),
+          _countBadge(shown, key: ValueKey('count-${sv.info.id}')),
         ]),
       ));
       // The name plate: the name, then the turn clock on its own line (kept even when it's not
@@ -1353,7 +1531,11 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
           Row(children: [
             // Your tile count, like the opponents' (tiles you've put on the table this turn don't count).
             Stack(clipBehavior: Clip.none, children: [
-              _avatar(me, a, current: my),
+              GestureDetector(
+                key: const ValueKey('myAvatar'),
+                onTap: () => setState(() => _chatOpen = true),
+                child: _avatar(me, a, current: my),
+              ),
               _countBadge(_rackShown.where((t) => !isRackGap(t)).length, key: const ValueKey('myCount')),
             ]),
             const SizedBox(width: 14),
@@ -1751,8 +1933,9 @@ class _TileSpriteState extends State<_TileSprite> with SingleTickerProviderState
 
 class _FlyingBack extends StatefulWidget {
   final Rect from, to;
+  final int? tile;
   final VoidCallback onDone;
-  const _FlyingBack({super.key, required this.from, required this.to, required this.onDone});
+  const _FlyingBack({super.key, required this.from, required this.to, required this.onDone, this.tile});
   @override
   State<_FlyingBack> createState() => _FlyingBackState();
 }
@@ -1776,7 +1959,13 @@ class _FlyingBackState extends State<_FlyingBack> with SingleTickerProviderState
           return Positioned.fromRect(
             rect: r,
             child: IgnorePointer(
-              child: Transform.rotate(angle: -0.14 * math.sin(math.pi * t), child: GoldBack(width: r.width, height: r.height)),
+              child: Transform.rotate(
+                angle: -0.14 * math.sin(math.pi * t),
+                // A tile from the table shows its face until it's nearly home.
+                child: widget.tile != null && t < .75
+                    ? TileFace(key: const ValueKey('flyingFace'), tile: widget.tile!, width: r.width, height: r.height)
+                    : GoldBack(width: r.width, height: r.height),
+              ),
             ),
           );
         },

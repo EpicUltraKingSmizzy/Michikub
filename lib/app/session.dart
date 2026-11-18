@@ -5,6 +5,20 @@ import 'package:flutter/foundation.dart';
 import '../engine/bot.dart';
 import '../engine/host.dart';
 
+/// Quick chat: the phrases and emojis a player can send (nothing else is accepted).
+const kQuickChatPhrases = ['BRB', 'Well Played!', 'Nice try!', 'WOW!'];
+const kQuickChatEmojis = ['😂', '😭', '🧐', '🤯', '💢', '💯', '🔥', '❤️', '👀', '💡', '🫠', '😴'];
+bool isQuickChat(String text) => kQuickChatPhrases.contains(text) || kQuickChatEmojis.contains(text);
+
+/// One quick chat message from a seat.
+class ChatMsg {
+  final int seq;
+  final String from;
+  final String text;
+  const ChatMsg(this.seq, this.from, this.text);
+  bool get isEmoji => kQuickChatEmojis.contains(text);
+}
+
 /// What the game table talks to. Practice and Pass-and-play run the host
 /// in-process; online games go through the network sessions.
 abstract class GameSession extends ChangeNotifier {
@@ -32,6 +46,22 @@ abstract class GameSession extends ChangeNotifier {
 
   Future<ActionResult> act(GameAction a);
   void nextRound();
+
+  /// Quick chat messages seen on this phone, oldest first (the table shows the new ones).
+  final List<ChatMsg> chats = [];
+  int _chatSeq = 0;
+
+  /// Sends a quick chat message from this phone's player (only [isQuickChat] texts).
+  void sendChat(String text) {}
+
+  /// Records a chat message from seat [from] and tells the table.
+  @protected
+  void addChat(String from, String text) {
+    if (!isQuickChat(text)) return;
+    chats.add(ChatMsg(++_chatSeq, from, text));
+    if (chats.length > 50) chats.removeAt(0);
+    notifyListeners();
+  }
   void pause() {}
   void resume() {}
   void leave();
@@ -118,6 +148,9 @@ class LocalSession extends GameSession {
 
   @override
   Future<ActionResult> act(GameAction a) async => host.handle(_seat, a);
+
+  @override
+  void sendChat(String text) => addChat(_seat, text);
 
   @override
   void nextRound() {

@@ -160,6 +160,11 @@ class NetHost extends ChangeNotifier {
         if (a is ReadyAction) return;
         final r = h.handle(s.info.id, a);
         link.send(jsonEncode({'t': 'result', 'req': m['req'], 'ok': r.ok, 'error': r.error}));
+      case 'chat':
+        final s = seats.where((x) => x.link == link).firstOrNull;
+        final text = m['text'];
+        if (s == null || text is! String || !isQuickChat(text)) return;
+        chat(s.info.id, text, except: link);
     }
   }
 
@@ -173,6 +178,16 @@ class NetHost extends ChangeNotifier {
     for (final s in seats) {
       s.link?.send(msg);
     }
+  }
+
+  /// Shows a quick chat message from [from] on the host's table and every guest's (the sender's
+  /// own phone, [except], already shows it).
+  void chat(String from, String text, {PeerLink? except}) {
+    final msg = jsonEncode({'t': 'chat', 'from': from, 'text': text});
+    for (final s in seats) {
+      if (s.link != null && s.link != except) s.link!.send(msg);
+    }
+    session?.showChat(from, text);
   }
 
   NetHostSession start() {
@@ -241,6 +256,9 @@ class NetHostSession extends GameSession {
   bool get controlsRounds => true;
   @override
   Future<ActionResult> act(GameAction a) async => host.handle('host', a);
+  @override
+  void sendChat(String text) => net.chat('host', text);
+  void showChat(String from, String text) => addChat(from, text);
   @override
   void nextRound() => host.startRound();
   @override
@@ -319,6 +337,9 @@ class NetGuest extends ChangeNotifier {
         session!.setView(v);
       case 'result':
         session?.complete(m['req'] as int?, m['ok'] as bool? ?? false, m['error'] as String?);
+      case 'chat':
+        final from = m['from'], text = m['text'];
+        if (from is String && text is String) session?.showChat(from, text);
       case 'bye':
         error = m['reason'] as String? ?? 'The host ended the game.';
         session?.setStatus(error);
@@ -332,6 +353,8 @@ class NetGuest extends ChangeNotifier {
     link?.send(jsonEncode({'t': 'act', 'req': _req, 'action': a.toJson()}));
     return _req;
   }
+
+  void sendChat(String text) => link?.send(jsonEncode({'t': 'chat', 'text': text}));
 
   void close() {
     _sub?.cancel();
@@ -383,4 +406,13 @@ class NetGuestSession extends GameSession {
   void nextRound() {}
   @override
   void leave() => guest.close();
+
+  @override
+  void sendChat(String text) {
+    if (!isQuickChat(text)) return;
+    guest.sendChat(text);
+    if (guest.seatId != null) addChat(guest.seatId!, text);
+  }
+
+  void showChat(String from, String text) => addChat(from, text);
 }

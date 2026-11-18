@@ -261,4 +261,36 @@ void main() {
     await tester.pump();
     expect(log, [Sfx.click]);
   });
+
+  testWidgets('drawing plays only the draw sound (no button click)', (tester) async {
+    await setUpGame(tester);
+    final log = SoundBoard.instance.log..clear();
+    await tester.tap(find.text('Draw'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+    expect(log, [Sfx.draw]);
+    // The opponent's draw too.
+    log.clear();
+    host.handle('p1', const DrawAction());
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+    expect(log, [Sfx.draw]);
+    await tearDownGame(tester);
+  });
+
+  testWidgets('a sort mode sorts the rack at the end of my turn, silently', (tester) async {
+    await setUpGame(tester, annRack: [y(1), y(2), y(3)]);
+    List<int> order() => (tester.state(find.byType(GameScreen)) as dynamic).debugRackOrder as List<int>;
+    final log = SoundBoard.instance.log..clear();
+    final b = Board.empty()..writeBlock(Block(0, 0, [y(1), y(2), y(3)]));
+    expect(host.handle('p0', CommitAction(b)).ok, true);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+    final rack = host.racks['p0']!;
+    expect(order().where((t) => !isRackGap(t)).toSet(), rack.toSet());
+    List<int> norm(List<int> e) => [for (final t in e) isRackGap(t) ? -1 : t];
+    expect(norm(order()), norm(keepSetsOnRows(sortRackWithSets(rack, runs: true))), reason: 'packed and sorted 789, no blanks where the set was');
+    expect(log, isNot(contains(Sfx.sort)));
+    await tearDownGame(tester);
+  });
 }

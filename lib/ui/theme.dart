@@ -146,7 +146,10 @@ class GoldButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final bool compact;
   final bool crimson;
-  const GoldButton(this.label, {super.key, this.icon, this.onPressed, this.compact = false, this.crimson = false});
+
+  /// Plays the menu click (off for buttons with their own sound, like Draw).
+  final bool sound;
+  const GoldButton(this.label, {super.key, this.icon, this.onPressed, this.compact = false, this.crimson = false, this.sound = true});
   @override
   Widget build(BuildContext context) {
     final enabled = onPressed != null;
@@ -160,7 +163,7 @@ class GoldButton extends StatelessWidget {
           onTap: onPressed == null
               ? null
               : () {
-                  playSfx(Sfx.click);
+                  if (sound) playSfx(Sfx.click);
                   onPressed!();
                 },
           child: Ink(

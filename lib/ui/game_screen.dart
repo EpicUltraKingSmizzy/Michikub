@@ -206,6 +206,10 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
 
   List<int> get _order => _rackOrders.putIfAbsent(v?.me ?? '', () => []);
 
+  /// Tests: my rack's slots (tiles and blanks).
+  @visibleForTesting
+  List<int> get debugRackOrder => List.of(_order);
+
   void _onSession() {
     final nv = s.view;
     if (nv == null) {
@@ -245,8 +249,24 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       _sortModes[nv.me] = true;
     }
     final mode = _sortModes[nv.me];
-    if (fresh.isNotEmpty && mode != null) {
+    // My turn just ended (a draw, or a play): with a sort mode on, the rack is sorted (silently;
+    // the shuffle sound is only for tapping 789 / 777).
+    final myTurnEnded = !seatChanged && old.myTurn && turnChanged && nv.result == null;
+    if ((fresh.isNotEmpty || myTurnEnded) && mode != null) {
       packed = _sortedEntries(packed, mode, nv.myTurn ? working.allTiles.toSet() : const {});
+    }
+    if (seatChanged && old != null && old.myTurn && nv.result == null) {
+      // Pass-and-play: the previous player's turn ended and the phone moves on; sort their rack
+      // now for when it's back.
+      final prevMode = _sortModes[old.me];
+      final prev = _rackOrders[old.me];
+      if (prevMode != null && prev != null) {
+        final gone = nv.board.allTiles.toSet();
+        final kept = [for (final t in prev) if (!isRackGap(t) && !gone.contains(t)) t];
+        prev
+          ..clear()
+          ..addAll(_sortedEntries(kept, prevMode, const {}));
+      }
     }
     if (mode == null) packed = raiseRack(packed);
     order
@@ -1648,6 +1668,8 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
             icon: my ? (played ? Icons.check_circle_outline : Icons.add_box_outlined) : Icons.hourglass_empty,
             compact: true,
             onPressed: my ? _drawOrEnd : null,
+            // Drawing plays only the draw sound (no click on top); End turn clicks.
+            sound: !(my && !played),
           ),
         ]),
       ),

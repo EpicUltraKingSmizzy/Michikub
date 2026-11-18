@@ -240,7 +240,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     if (nv.round > 0 && nv.result == null && _dealtRound[nv.me] != nv.round) {
       // A fresh deal: sorted 777 then 789, with 789 selected.
       _dealtRound[nv.me] = nv.round;
-      if (nv.round == 1) playSfx(Sfx.gameStart); // Silent until a start sound is chosen.
+      playSfx(Sfx.gameStart);
       packed = _sortedEntries(_sortedEntries(packed, false, const {}), true, const {});
       _sortModes[nv.me] = true;
     }
@@ -418,7 +418,11 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     }
     _history.add(working);
     working = b;
-    if (moved != null && moved.isNotEmpty) playSfx(Sfx.attach);
+    if (moved != null && moved.isNotEmpty) {
+      // Attached to tiles already there, or set down on its own (a new set).
+      final blk = b.blockOf(moved.first);
+      playSfx(blk != null && blk.tiles.any((t) => !moved.contains(t)) ? Sfx.attach : Sfx.place);
+    }
     _selected.clear();
     _groupSel = false;
     if (moved != null && moved.isNotEmpty) {

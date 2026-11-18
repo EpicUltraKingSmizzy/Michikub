@@ -10,8 +10,12 @@ enum Sfx {
   /// A tile drawn from the pile, by you or an opponent.
   draw(['draw']),
 
-  /// Tiles you place on the table.
+  /// Tiles you add to a set already on the table.
   attach(['attach']),
+
+  /// Tiles you set down on the table on their own (a new set, not touching another). Its own
+  /// sound is still being chosen: until then it's the attach sound. Swap the file name here.
+  place(['attach']),
 
   /// Menu buttons.
   click(['click']),
@@ -19,8 +23,8 @@ enum Sfx {
   /// Tapping 789 / 777 by hand (not the automatic sorts): one of three bursts at random.
   sort(['sort_A', 'sort_B', 'sort_C']),
 
-  /// Hook for a start-of-game sound: no file yet, so it's silent.
-  gameStart([]);
+  /// A round's deal (the start of every round, including the first).
+  gameStart(['start']);
 
   final List<String> files;
   const Sfx(this.files);
@@ -54,7 +58,8 @@ class SoundBoard {
       );
       await AudioPlayer.global.setAudioContext(ctx);
       for (final s in Sfx.values) {
-        for (final f in s.files) {
+        for (final f in s.files.toSet()) {
+          if (_pools.containsKey(f)) continue;
           _pools[f] = await AudioPool.create(
             source: AssetSource('sfx/$f.ogg'),
             maxPlayers: 4,

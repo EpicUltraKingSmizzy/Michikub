@@ -201,6 +201,8 @@ Most numbers live in a small set of constants: `BotTuning` (lib/engine/bot.dart)
     - **Attach:** a chip-collide clack when you place tiles on the table, either a new set or attaching to one. Moving tiles back to your rack is silent.
     - **Menu buttons:** a chip-stack click on the gold buttons (home screen modes, setup, results and menus).
     - **Sort:** tapping 789 or 777 yourself plays one of three short tile bursts at random. The automatic sorts (after a draw, a tile coming back from the table, Reset, or the deal) are silent.
-    - **Not yet:** failed placements, splitting and the game start have no sound. The start sound has a hook ready for when you choose one.
+    - **Start:** a table wash that settles into a few clacks, at each round's deal (the first round included).
+    - **Place (coming):** tiles set down on their own as a new set, not touching another, will get their own wooden clack. Until it's chosen they use the attach sound; the hook is in place.
+    - **Not yet:** failed placements and splitting have no sound.
     - **How they play:** they're preloaded and play with low latency, and quick repeats can overlap. They mix with your music instead of pausing it. On iPhone they follow the silent switch. Android has no silent switch for app sounds, so they follow the media volume. Options has a Sound on/off switch (on by default, saved).
     - **Licences:** all the sounds are CC0. Sources are in assets/sfx/CREDITS.md.

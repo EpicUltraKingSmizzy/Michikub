@@ -171,9 +171,13 @@ void main() {
     await tearDownGame(tester);
   });
 
-  testWidgets('sounds: draw, attach, menu click, and the shuffle only for a hand sort', (tester) async {
+  testWidgets('sounds: start, draw, place, and the shuffle only for a hand sort', (tester) async {
+    SoundBoard.instance.log.clear();
     await setUpGame(tester, annRack: [y(1), y(2), y(3)]);
-    final log = SoundBoard.instance.log..clear();
+    final log = SoundBoard.instance.log;
+    // The deal: the start sound.
+    expect(log, contains(Sfx.gameStart));
+    log.clear();
     // A hand sort: the shuffle.
     await tester.tap(find.byKey(const ValueKey('sort777')));
     await tester.pump();
@@ -185,7 +189,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     await tester.tapAt(const Offset(600, 180));
     await tester.pump(const Duration(milliseconds: 600));
-    expect(log, [Sfx.attach]);
+    // A tile set down on its own (a new set): the place sound.
+    expect(log, [Sfx.place]);
     log.clear();
     // Opponent and own draws: the draw sound, and the automatic sort is silent.
     host.handle('p0', const DrawAction());

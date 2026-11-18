@@ -39,7 +39,7 @@ All play, solo modes included, goes through the same rules engine (`lib/engine/`
 
 ## Play in a browser
 
-The web version runs at https://epicultrakingsmizzy.github.io/Michikub/ (any phone, iPhone included, or a computer). It's rebuilt from `main` by `.github/workflows/pages.yml`. An invite's browser link (`…/Michikub/?join=CODE`) opens Join with the room code filled in.
+The web version runs at https://epicultrakingsmizzy.github.io/Michikub/ (any phone, iPhone included, or a computer). It's served by GitHub Pages from the `gh-pages` branch, which holds only the built files. To publish the current code, run `tool/deploy_web.sh` (it builds the web version and replaces `gh-pages`). An invite's browser link (`…/Michikub/?join=CODE`) opens Join with the room code filled in.
 
 ## Install on Android
 

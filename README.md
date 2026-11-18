@@ -37,6 +37,10 @@ All play, solo modes included, goes through the same rules engine (`lib/engine/`
 |---|---|---|
 | ![](docs/practice_setup.jpg) | ![](docs/results.jpg) | ![](docs/pass_and_play.jpg) |
 
+## Play in a browser
+
+The web version runs at https://epicultrakingsmizzy.github.io/Michikub/ (any phone, iPhone included, or a computer). It's rebuilt from `main` by `.github/workflows/pages.yml`. An invite's browser link (`…/Michikub/?join=CODE`) opens Join with the room code filled in.
+
 ## Install on Android
 
 Download `Michikub-v0.1.0.apk` from the [Releases](../../releases) page onto the phone, open it and allow "install unknown apps" for your browser or file manager when asked. The APK is signed with a debug key, which is fine for sideloading. Before a Play Store release it needs a real upload key.

@@ -4,8 +4,10 @@ import 'package:michikub/net/peer.dart';
 
 void main() {
   test('share text starts with the invitation, then the room code and the link', () {
-    expect(inviteShareText('ABCD'), 'Come play Michikub with me!\nRoom code: ABCD\nmichikub://join/ABCD');
-    expect(inviteShareText(' ktmqzp '), 'Come play Michikub with me!\nRoom code: KTMQZP\nmichikub://join/KTMQZP');
+    expect(inviteShareText('ABCD'),
+        'Come play Michikub with me!\nRoom code: ABCD\nPlay in your browser: https://epicultrakingsmizzy.github.io/Michikub/?join=ABCD\nAndroid app: michikub://join/ABCD');
+    expect(inviteShareText(' ktmqzp '), contains('?join=KTMQZP'));
+    expect(inviteShareText(' ktmqzp '), endsWith('michikub://join/KTMQZP'));
     expect(inviteShareText('ABCD').split('\n').first, 'Come play Michikub with me!');
   });
 
@@ -28,6 +30,12 @@ void main() {
     expect(codeFromAppLink(Uri.parse('michikub://other/ABCD')), isNull);
     expect(codeFromAppLink(Uri.parse('https://join/ABCD')), isNull);
     expect(codeFromAppLink(Uri.parse('michikub://join/AB')), isNull);
+    // The web version's link.
+    expect(codeFromAppLink(Uri.parse(webJoinLink('abcd'))), 'ABCD');
+    expect(codeFromAppLink(Uri.parse('https://epicultrakingsmizzy.github.io/Michikub/?join=ktmqzp')), 'KTMQZP');
+    expect(codeFromAppLink(Uri.parse('https://epicultrakingsmizzy.github.io/Michikub/?join=AB12')), isNull);
+    expect(codeFromAppLink(Uri.parse('https://epicultrakingsmizzy.github.io/Michikub/')), isNull);
+    expect(codeFromJoinLink('https://epicultrakingsmizzy.github.io/Michikub/?join=xytz'), 'XYTZ');
   });
 
   test('room codes are 6 letters, no digits or look-alikes (v0.1.8)', () {

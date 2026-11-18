@@ -71,6 +71,10 @@ class _StartState extends State<_Start> {
         // No link support on this platform.
       }
     }
+    // Web: ?join=ABCD (from a shared invite) opens Join a game with the code filled in.
+    if (kIsWeb && Uri.base.queryParameters['join'] != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _openLink(Uri.base));
+    }
     final demo = Uri.base.queryParameters['demo'];
     if (kIsWeb && demo != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {

@@ -4,19 +4,31 @@ library;
 /// The app's join link for a room code, e.g. `michikub://join/ABCD`.
 String joinLink(String code) => 'michikub://join/${code.trim().toUpperCase()}';
 
+/// Where the web version is hosted (GitHub Pages).
+const kWebAppUrl = 'https://epicultrakingsmizzy.github.io/Michikub/';
+
+/// The web version's join link, e.g. `https://epicultrakingsmizzy.github.io/Michikub/?join=ABCD`:
+/// opens the game in a browser (any phone, iPhone included) with Join filled in.
+String webJoinLink(String code) => '$kWebAppUrl?join=${code.trim().toUpperCase()}';
+
 /// The message shared with friends:
 ///
 ///     Come play Michikub with me!
 ///     Room code: ABCD
-///     michikub://join/ABCD
+///     Play in your browser: https://epicultrakingsmizzy.github.io/Michikub/?join=ABCD
+///     Android app: michikub://join/ABCD
 String inviteShareText(String code) {
   final c = code.trim().toUpperCase();
-  return 'Come play Michikub with me!\nRoom code: $c\n${joinLink(c)}';
+  return 'Come play Michikub with me!\nRoom code: $c\nPlay in your browser: ${webJoinLink(c)}\nAndroid app: ${joinLink(c)}';
 }
 
 /// The room code from a link that opened the app (`michikub://join/ABCD`), or null when the
 /// link isn't a join link.
 String? codeFromAppLink(Uri uri) {
+  final web = uri.queryParameters['join'];
+  if (web != null && (uri.scheme == 'http' || uri.scheme == 'https' || uri.scheme.isEmpty)) {
+    return RegExp(r'^[A-Za-z]{4,8}$').hasMatch(web) ? web.toUpperCase() : null;
+  }
   if (uri.scheme.toLowerCase() != 'michikub' || uri.host.toLowerCase() != 'join') return null;
   final seg = uri.pathSegments.where((s) => s.isNotEmpty).firstOrNull;
   if (seg == null || !RegExp(r'^[A-Za-z]{4,8}$').hasMatch(seg)) return null;
@@ -25,7 +37,7 @@ String? codeFromAppLink(Uri uri) {
 
 /// The room code (letters only) in a join link (or a bare code), or null if there isn't one.
 String? codeFromJoinLink(String text) {
-  final m = RegExp(r'michikub://join/([A-Za-z]+)').firstMatch(text);
+  final m = RegExp(r'michikub://join/([A-Za-z]+)').firstMatch(text) ?? RegExp(r'[?&]join=([A-Za-z]+)').firstMatch(text);
   if (m != null) return m.group(1)!.toUpperCase();
   final bare = text.trim().toUpperCase();
   return RegExp(r'^[A-Z]{4,8}$').hasMatch(bare) ? bare : null;

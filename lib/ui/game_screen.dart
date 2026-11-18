@@ -26,6 +26,9 @@ class TableTuning {
   /// How long the white "new on the table" glow takes to fade in or out.
   static const newGlowFadeMs = 700;
 
+  /// The Add row (make space) button beside the rack. Off since v0.1.8; the code stays.
+  static const showAddRow = false;
+
   /// The bright pulse around your rack when your turn starts.
   static const turnPulseMs = 650;
   static const flashMs = 650;
@@ -69,7 +72,7 @@ class GameScreen extends StatefulWidget {
   State<GameScreen> createState() => _GameScreenState();
 }
 
-class _GameScreenState extends State<GameScreen> {
+class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   GameSession get s => widget.session;
   final prefs = AppPrefs.instance;
   final _stackKey = GlobalKey();
@@ -88,6 +91,9 @@ class _GameScreenState extends State<GameScreen> {
   /// deselects it.
   final Map<String, bool> _sortModes = {};
   bool? get _sortMode => _sortModes[v?.me ?? ''];
+
+  /// The round each seat's rack was last dealt and sorted for (see [_onSession]).
+  final Map<String, int> _dealtRound = {};
 
   /// Bumped when my turn starts, to play the rack pulse.
   int _turnPulseSeq = 0;
@@ -125,9 +131,30 @@ class _GameScreenState extends State<GameScreen> {
   /// The results panel is minimised to show the final table.
   bool _resultsHidden = false;
 
+  /// Practice / Pass-and-play paused because the app went to the background.
+  bool _bgPaused = false;
+
+  /// Practice and Pass-and-play: the turn clock (and the bots) pause while the app is in the
+  /// background (or inactive, e.g. the notification shade), and carry on when it's back.
+  /// Online games keep running: other phones are waiting.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (s is! LocalSession) return;
+    if (state == AppLifecycleState.resumed) {
+      if (_bgPaused) {
+        _bgPaused = false;
+        if (!_menuOpen) s.resume();
+      }
+    } else if (!_bgPaused) {
+      _bgPaused = true;
+      s.pause();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     s.addListener(_onSession);
     _onSession();
     _ticker = Timer.periodic(const Duration(milliseconds: 250), (_) {
@@ -137,6 +164,7 @@ class _GameScreenState extends State<GameScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     s.removeListener(_onSession);
     _ticker?.cancel();
     _toastTimer?.cancel();
@@ -177,10 +205,17 @@ class _GameScreenState extends State<GameScreen> {
     for (final t in fresh) {
       packed = addToRack(packed, t);
     }
+    if (nv.round > 0 && nv.result == null && _dealtRound[nv.me] != nv.round) {
+      // A fresh deal: sorted 777 then 789, with 789 selected.
+      _dealtRound[nv.me] = nv.round;
+      packed = _sortedEntries(_sortedEntries(packed, false, const {}), true, const {});
+      _sortModes[nv.me] = true;
+    }
     final mode = _sortModes[nv.me];
     if (fresh.isNotEmpty && mode != null) {
       packed = _sortedEntries(packed, mode, nv.myTurn ? working.allTiles.toSet() : const {});
     }
+    if (mode == null) packed = raiseRack(packed);
     order
       ..clear()
       ..addAll(packed);
@@ -450,6 +485,7 @@ class _GameScreenState extends State<GameScreen> {
       } else if (_sortMode != null) {
         placed = _sortedEntries(placed, _sortMode!, onBoard);
       }
+      if (_sortMode == null) placed = raiseRack(placed);
       _order
         ..clear()
         ..addAll(placed);
@@ -641,6 +677,10 @@ class _GameScreenState extends State<GameScreen> {
     if (back.isEmpty || !_myTurn) return;
     if (back.any((t) => wasOnTableAtTurnStart(_startTiles, t))) {
       _flashRed(back, kTableTileToRack);
+      setState(() {
+        _selected.clear();
+        _groupSel = false;
+      });
       return;
     }
     var order = [for (final e in _order) back.contains(e) ? newRackBlank() : e];
@@ -845,7 +885,7 @@ class _GameScreenState extends State<GameScreen> {
       ),
     );
     _menuOpen = false;
-    if (mounted) s.resume();
+    if (mounted && !_bgPaused) s.resume();
   }
 
   bool _leaving = false;
@@ -1089,21 +1129,24 @@ class _GameScreenState extends State<GameScreen> {
           ),
         ),
       ),
-      // Left of the rack, top down: Add row (Make space), then the 789 and 777 sort buttons.
+      // Left of the rack, top down: Add row (Make space, hidden: TableTuning.showAddRow), then
+      // the 789 and 777 sort buttons.
       Positioned(
         left: g.rackRect.left - 58,
-        top: math.min(g.rackRect.top + 2, g.size.height - 3 * 46 - 2 * 6 - 6),
+        top: math.min(g.rackRect.top + 2, g.size.height - (TableTuning.showAddRow ? 3 : 2) * 52 - 6),
         width: 46,
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Tooltip(
-            message: 'Add a row (make space)',
-            child: RingButton(
-              size: 46,
-              onPressed: _myTurn ? _makeSpace : null,
-              child: const Icon(Icons.unfold_more_double, color: MK.goldLight, size: 38),
+          if (TableTuning.showAddRow) ...[
+            Tooltip(
+              message: 'Add a row (make space)',
+              child: RingButton(
+                size: 46,
+                onPressed: _myTurn ? _makeSpace : null,
+                child: const Icon(Icons.unfold_more_double, color: MK.goldLight, size: 38),
+              ),
             ),
-          ),
-          const SizedBox(height: 6),
+            const SizedBox(height: 6),
+          ],
           Tooltip(
             message: 'Sort: sets first, then runs order',
             child: RingButton(

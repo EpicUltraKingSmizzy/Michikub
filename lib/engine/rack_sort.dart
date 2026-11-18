@@ -139,3 +139,12 @@ List<int> keepSetsOnRows(List<int> sorted) {
   }
   return trimRack(out);
 }
+
+/// Rack auto-raise: when the top row is empty and the bottom row has tiles, the bottom row's
+/// tiles move up into the same columns.
+List<int> raiseRack(List<int> entries) {
+  final out = trimRack(entries);
+  final perRow = rackSlotsPerRow(out.length);
+  if (out.length <= perRow || !out.take(perRow).every(isRackGap)) return out;
+  return trimRack(out.sublist(perRow));
+}

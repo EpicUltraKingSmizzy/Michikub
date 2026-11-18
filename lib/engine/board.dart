@@ -13,6 +13,15 @@ class LayoutTuning {
 
   /// A set that must move stays in its row if it moves this far or less.
   static const int stayInRowMax = 3;
+
+  /// Rows the view starts with: end-of-turn balancing only uses these (and rows with tiles).
+  static const int viewRows = 3;
+
+  /// End-of-turn balancing moves a set when the fullest and emptiest rows differ by at least
+  /// this many tiles, and the fullest row (sets and the spaces between them) is wider than
+  /// [balanceWidth], the columns the view shows before it zooms out.
+  static const int balanceDiff = 8;
+  static const int balanceWidth = 16;
 }
 
 /// A run of adjacent tiles in one row: one set on the table.
@@ -363,15 +372,76 @@ class Layout {
     if (b.usedRows.isEmpty) return b;
     _collapseLoneSets(b);
     _collapseGaps(b);
-    for (var r = 0; r < b.rowCount; r++) {
-      _centreRow(b, r);
-    }
     while (b.rowCount > 1 && b.isEmptyRow(0)) {
       b.rows.removeAt(0);
+    }
+    _balanceRows(b);
+    for (var r = 0; r < b.rowCount; r++) {
+      _centreRow(b, r);
     }
     b.ensureRows(LayoutTuning.startRows);
     b.trim();
     return b;
+  }
+
+  /// Row balancing (step 5, after the top empty rows are gone): when the row with the most
+  /// tiles is too wide for the view and has [LayoutTuning.balanceDiff] or more tiles than the
+  /// row with the fewest, one set
+  /// moves from the fullest row to the emptiest. Only the first [LayoutTuning.viewRows] rows
+  /// (blank or not) and rows with tiles take part, so no new row is ever opened below them.
+  /// The set chosen is the one that evens the two rows out best; nothing moves unless the
+  /// difference shrinks and the set fits.
+  static void _balanceRows(Board b) {
+    b.ensureRows(LayoutTuning.viewRows);
+    final rows = [for (var r = 0; r < b.rowCount; r++) if (r < LayoutTuning.viewRows || !b.isEmptyRow(r)) r];
+    int count(int r) => b.rows[r].where((t) => t >= 0).length;
+    var most = rows.first, least = rows.first;
+    for (final r in rows) {
+      if (count(r) > count(most)) most = r;
+      if (count(r) < count(least)) least = r;
+    }
+    final diff = count(most) - count(least);
+    final fullest = b.blocksInRow(most);
+    final width = fullest.fold<int>(0, (s, x) => s + x.length) + fullest.length - 1;
+    if (diff < LayoutTuning.balanceDiff || width <= LayoutTuning.balanceWidth) return;
+    final target = b.blocksInRow(least);
+    final used = target.fold<int>(0, (s, x) => s + x.length) + target.length;
+    Block? best;
+    var bestDiff = diff;
+    for (final blk in b.blocksInRow(most)) {
+      if (used + blk.length > Board.width) continue;
+      final d = ((count(most) - blk.length) - (count(least) + blk.length)).abs();
+      if (d < bestDiff) {
+        best = blk;
+        bestDiff = d;
+      }
+    }
+    if (best == null) return;
+    b.clearBlock(best);
+    // Packed after the row's sets (it fits: checked above); centring then lays the row out.
+    for (final blk in target) {
+      b.clearBlock(blk);
+    }
+    var c = 0;
+    for (final blk in [...target, best]) {
+      b.writeBlock(blk.at(least, c));
+      c += blk.length + 1;
+    }
+  }
+
+  /// Where a bot puts a new set: the row that already has tiles but the fewest of them (top
+  /// row first on a tie), where it fits; otherwise the usual spot ([findSpotForNewSet]).
+  static ({Board board, int row, int col}) findSpotForBotSet(Board board, int len) {
+    int count(int r) => board.rows[r].where((t) => t >= 0).length;
+    final rows = [...board.usedRows]..sort((a, c) => count(a) != count(c) ? count(a) - count(c) : a - c);
+    for (final r in rows) {
+      final blocks = board.blocksInRow(r);
+      final after = blocks.last.end + 1;
+      if (board.fits(r, after, len)) return (board: board.copy(), row: r, col: after);
+      final s = board.nearestFit(r, len, 0);
+      if (s != null) return (board: board.copy(), row: r, col: s);
+    }
+    return findSpotForNewSet(board, len);
   }
 
   static void _collapseLoneSets(Board b) {

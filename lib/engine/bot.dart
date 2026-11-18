@@ -516,7 +516,7 @@ BotPlan planTurn({
 Board applyBotStep(Board board, BotStep step) {
   switch (step.type) {
     case BotStepType.newSet:
-      final spot = Layout.findSpotForNewSet(board, step.tiles.length);
+      final spot = Layout.findSpotForBotSet(board, step.tiles.length);
       return Layout.place(spot.board, step.tiles, spot.row, spot.col, merge: false);
     case BotStepType.extend:
       final blk = board.blockOf(step.targetSetTile!)!;

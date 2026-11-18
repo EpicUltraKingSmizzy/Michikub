@@ -1,6 +1,6 @@
 # Sound effects: credits and licences
 
-All sounds here are CC0 1.0 (public domain dedication); no attribution is required, but here's where they came from. Each was trimmed/EQ'd, peak-normalised to −1 dBFS and exported as Vorbis OGG for Michikub (the edits are also CC0).
+All sounds here are CC0 1.0 (public domain dedication); no attribution is required, but here's where they came from. Each was trimmed/EQ'd, peak-normalised to −1 dBFS and exported as Vorbis OGG for Michikub, with the silence before the first click trimmed (the edits are also CC0).
 
 | File | Used for | Source | Licence |
 |---|---|---|---|

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../app/sfx.dart';
 import '../app/bot_roster.dart';
 import '../app/prefs.dart';
 import '../app/session.dart';
@@ -105,12 +106,12 @@ class _PracticeSetupScreenState extends State<PracticeSetupScreen> {
               Text('Computer players', style: MK.body(15, weight: FontWeight.w700)),
               const Spacer(),
               IconButton(
-                onPressed: bots.length > 1 ? _removeBot : null,
+                onPressed: bots.length > 1 ? _clicked(_removeBot) : null,
                 icon: const Icon(Icons.remove_circle_outline, color: MK.goldLight),
               ),
               Text('${bots.length}', style: MK.body(18, weight: FontWeight.w700)),
               IconButton(
-                onPressed: bots.length < 3 ? _addBot : null,
+                onPressed: bots.length < 3 ? _clicked(_addBot) : null,
                 icon: const Icon(Icons.add_circle_outline, color: MK.goldLight),
               ),
               const Spacer(),
@@ -211,13 +212,13 @@ class _HotSeatSetupScreenState extends State<HotSeatSetupScreen> {
               Text('Players on this phone', style: MK.body(15, weight: FontWeight.w700)),
               const Spacer(),
               IconButton(
-                onPressed: names.length > 2 ? () => setState(() => names.removeLast()) : null,
+                onPressed: names.length > 2 ? _clicked(() => setState(() => names.removeLast())) : null,
                 icon: const Icon(Icons.remove_circle_outline, color: MK.goldLight),
               ),
               Text('${names.length}', style: MK.body(18, weight: FontWeight.w700)),
               IconButton(
                 onPressed: names.length < 4
-                    ? () => setState(() => names.add(TextEditingController(text: 'Player ${names.length + 1}')))
+                    ? _clicked(() => setState(() => names.add(TextEditingController(text: 'Player ${names.length + 1}'))))
                     : null,
                 icon: const Icon(Icons.add_circle_outline, color: MK.goldLight),
               ),
@@ -237,3 +238,9 @@ class _HotSeatSetupScreenState extends State<HotSeatSetupScreen> {
     );
   }
 }
+
+/// [f] with the menu click sound first (the add/remove player buttons).
+VoidCallback _clicked(VoidCallback f) => () {
+      playSfx(Sfx.click);
+      f();
+    };

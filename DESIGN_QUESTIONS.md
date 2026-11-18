@@ -206,3 +206,8 @@ Most numbers live in a small set of constants: `BotTuning` (lib/engine/bot.dart)
     - **Not yet:** failed placements and splitting have no sound.
     - **How they play:** they're preloaded and play with low latency, and quick repeats can overlap. They mix with your music instead of pausing it. On iPhone they follow the silent switch. Android has no silent switch for app sounds, so they follow the media volume. Options has a Sound on/off switch (on by default, saved).
     - **Licences:** all the sounds are CC0. Sources are in assets/sfx/CREDITS.md.
+    - **Timing (v0.1.8 feedback):**
+      - Every sound starts within about 2 ms: the silence before the first click was trimmed, with a 1 ms fade-in so it doesn't pop, and nothing after it was cut.
+      - The attach and menu sounds had a soft thud placed about 80 ms before the click. It's now at the click.
+      - Each sound's players are loaded once at start-up and used in turn. Before, nearly every play loaded a new player, which added delay.
+      - The add/remove bot and player buttons on the setup screens, and the online lobby's Add bot buttons, use the menu click.

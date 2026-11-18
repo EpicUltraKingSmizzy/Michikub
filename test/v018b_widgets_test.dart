@@ -9,6 +9,7 @@ import 'package:michikub/engine/rack_sort.dart';
 import 'package:michikub/engine/rules.dart';
 import 'package:michikub/engine/tiles.dart';
 import 'package:michikub/ui/game_screen.dart';
+import 'package:michikub/ui/setup_screens.dart';
 import 'package:michikub/ui/theme.dart';
 
 int y(int n, [int copy = 0]) => makeTile(TileColor.yellow, n, copy: copy);
@@ -248,5 +249,16 @@ void main() {
     }
     expect(host.preview?.allTiles.length ?? 0, 3);
     await tearDownGame(tester);
+  });
+
+  testWidgets('sounds: Add bot on the Practice setup clicks', (tester) async {
+    tester.view.physicalSize = const Size(1200, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(const MaterialApp(home: PracticeSetupScreen()));
+    final log = SoundBoard.instance.log..clear();
+    await tester.tap(find.byIcon(Icons.add_circle_outline));
+    await tester.pump();
+    expect(log, [Sfx.click]);
   });
 }

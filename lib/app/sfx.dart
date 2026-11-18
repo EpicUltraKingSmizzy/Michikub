@@ -32,11 +32,17 @@ enum Sfx {
 
 /// Plays [Sfx]: short, preloaded, low-latency, overlapping. Silent until [init] succeeds (tests,
 /// platforms without audio) and when Sound is off in Options.
+///
+/// Each file gets a few players, loaded once at start-up (Android: SoundPool, "low latency"),
+/// used in turn so quick repeats overlap. (audioplayers' AudioPool doesn't reuse low-latency
+/// players: it made and loaded a new player for nearly every play, which was slow.)
 class SoundBoard {
   static final instance = SoundBoard._();
   SoundBoard._();
 
-  final _pools = <String, AudioPool>{};
+  static const _voices = 3;
+  final _players = <String, List<AudioPlayer>>{};
+  final _next = <String, int>{};
   final _rng = math.Random();
 
   /// Tests: every sound asked for, played or not.
@@ -59,13 +65,19 @@ class SoundBoard {
       await AudioPlayer.global.setAudioContext(ctx);
       for (final s in Sfx.values) {
         for (final f in s.files.toSet()) {
-          if (_pools.containsKey(f)) continue;
-          _pools[f] = await AudioPool.create(
-            source: AssetSource('sfx/$f.ogg'),
-            maxPlayers: 4,
-            playerMode: PlayerMode.lowLatency,
-            audioContext: ctx,
-          );
+          if (_players.containsKey(f)) continue;
+          final list = <AudioPlayer>[];
+          for (var i = 0; i < _voices; i++) {
+            final p = AudioPlayer();
+            try {
+              await p.setPlayerMode(PlayerMode.lowLatency);
+            } catch (_) {} // Not on every platform: the normal player still works.
+            await p.setAudioContext(ctx);
+            await p.setReleaseMode(ReleaseMode.stop);
+            await p.setSource(AssetSource('sfx/$f.ogg'));
+            list.add(p);
+          }
+          _players[f] = list;
         }
       }
     } catch (e) {
@@ -76,8 +88,16 @@ class SoundBoard {
   void play(Sfx s) {
     log.add(s);
     if (!AppPrefs.instance.sound || s.files.isEmpty) return;
-    final pool = _pools[s.files[_rng.nextInt(s.files.length)]];
-    pool?.start().catchError((_) => () async {});
+    final f = s.files[_rng.nextInt(s.files.length)];
+    final list = _players[f];
+    if (list == null || list.isEmpty) return;
+    final i = _next[f] ?? 0;
+    _next[f] = (i + 1) % list.length;
+    final p = list[i];
+    // Not awaited: the platform runs them in order. Stop ends this voice's last play (a no-op
+    // if it finished) so resume starts it again from the top.
+    p.stop().catchError((_) {});
+    p.resume().catchError((_) {});
   }
 }
 

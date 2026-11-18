@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../app/sfx.dart';
 import '../app/bot_roster.dart';
 import '../app/prefs.dart';
 import '../engine/host.dart';
@@ -176,7 +177,13 @@ class _HostLobbyScreenState extends State<HostLobbyScreen> {
             Wrap(spacing: 8, children: [
               for (final l in BotLevel.values)
                 TextButton.icon(
-                  onPressed: net.full ? null : () => net.addBot(l),
+                  key: ValueKey('addBot-${l.name}'),
+                  onPressed: net.full
+                      ? null
+                      : () {
+                          playSfx(Sfx.click);
+                          net.addBot(l);
+                        },
                   icon: const Icon(Icons.add, size: 16),
                   label: Text('Add ${levelName(l)} bot'),
                 ),

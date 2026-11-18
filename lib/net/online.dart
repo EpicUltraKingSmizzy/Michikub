@@ -65,7 +65,36 @@ class NetHost extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool get canStart => seats.length >= 2 && host == null;
+  bool get canStart => seats.length >= 2 && (host == null || between);
+
+  /// Between rounds the host is back in the lobby (players and rules can change; friends can
+  /// join). The room, the connections and the running scores stay.
+  bool between = false;
+
+  void reopenLobby() {
+    if (host?.result == null) return;
+    between = true;
+    _broadcastLobby();
+    notifyListeners();
+  }
+
+  /// Leaves the lobby without changes (the results stay up).
+  void closeLobby() {
+    between = false;
+    _broadcastLobby();
+    notifyListeners();
+  }
+
+  /// Starts the next round with the lobby's players and rules.
+  void continueGame() {
+    final h = host;
+    if (h == null) return;
+    between = false;
+    h.reconfigure([for (final s in seats) s.info], rules);
+    _broadcastLobby();
+    h.startRound();
+    notifyListeners();
+  }
   bool get full => seats.length >= 4;
 
   void addBot(BotLevel level) {
@@ -134,7 +163,7 @@ class NetHost extends ChangeNotifier {
           notifyListeners();
           return;
         }
-        if (host != null) {
+        if (host != null && !between) {
           link.send(jsonEncode({'t': 'bye', 'reason': 'That game has already started.'}));
           return;
         }
@@ -257,6 +286,8 @@ class NetHostSession extends GameSession {
   PlayerView? get view => _view;
   @override
   bool get controlsRounds => true;
+  @override
+  bool get canChangeLineup => host.result != null;
   @override
   Future<ActionResult> act(GameAction a) async => host.handle('host', a);
   @override

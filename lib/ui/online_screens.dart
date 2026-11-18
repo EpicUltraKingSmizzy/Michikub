@@ -38,7 +38,11 @@ class RoomCode extends StatelessWidget {
 class HostLobbyScreen extends StatefulWidget {
   /// A room that's already been made (tests); normally the screen opens its own.
   final NetHost? net;
-  const HostLobbyScreen({super.key, this.net});
+
+  /// Between rounds: back in the lobby of a running game (Next round continues it; Back
+  /// returns to the results).
+  final bool betweenRounds;
+  const HostLobbyScreen({super.key, this.net, this.betweenRounds = false});
   @override
   State<HostLobbyScreen> createState() => _HostLobbyScreenState();
 }
@@ -72,7 +76,7 @@ class _HostLobbyScreenState extends State<HostLobbyScreen> {
   @override
   void dispose() {
     net.removeListener(_changed);
-    if (!_started) net.shutdown();
+    if (!_started && !widget.betweenRounds) net.shutdown();
     super.dispose();
   }
 
@@ -95,17 +99,26 @@ class _HostLobbyScreenState extends State<HostLobbyScreen> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: false,
+      canPop: widget.betweenRounds,
       onPopInvokedWithResult: (didPop, _) {
+        if (widget.betweenRounds) {
+          if (didPop && net.between) net.closeLobby();
+          return;
+        }
         if (!didPop) _confirmExit();
       },
       child: MkScaffold(
       title: 'Host a game',
       actions: [
         Text(net.canStart ? '' : 'Need 2+ players  ', style: MK.body(12, color: MK.gold)),
-        GoldButton('Start game', icon: Icons.play_arrow, compact: true, onPressed: net.canStart
+        GoldButton(widget.betweenRounds ? 'Next round' : 'Start game', key: const ValueKey('start'), icon: Icons.play_arrow, compact: true, onPressed: net.canStart
               ? () {
                   _started = true;
+                  if (widget.betweenRounds) {
+                    net.continueGame();
+                    Navigator.of(context).pop();
+                    return;
+                  }
                   final session = net.start();
                   Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => GameScreen(session: session)));
                 }

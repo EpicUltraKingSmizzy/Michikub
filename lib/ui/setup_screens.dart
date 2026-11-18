@@ -37,17 +37,23 @@ class _TestBadge extends StatelessWidget {
 }
 
 class PracticeSetupScreen extends StatefulWidget {
-  const PracticeSetupScreen({super.key});
+  /// Between rounds: the game whose players and rules are being changed (Start continues it).
+  final GameSession? resume;
+  const PracticeSetupScreen({super.key, this.resume});
   @override
   State<PracticeSetupScreen> createState() => _PracticeSetupScreenState();
 }
 
 class _PracticeSetupScreenState extends State<PracticeSetupScreen> {
   final prefs = AppPrefs.instance;
-  late List<BotLevel> bots = List.of(prefs.practiceBots);
+  late final List<PlayerInfo>? _was = widget.resume?.lineup.where((p) => p.kind == SeatKind.bot).toList();
+  late List<BotLevel> bots = _was != null ? [for (final p in _was) p.level] : List.of(prefs.practiceBots);
 
   /// The robots for this game, picked at random when the screen opens (Shuffle picks again).
-  late List<RobotProfile> robots = pickRobots(bots.length, exclude: _mine);
+  /// Between rounds, the robots already playing.
+  late List<RobotProfile> robots = _was != null
+      ? [for (final p in _was) robotByAvatar(p.avatar) ?? pickRobots(1, exclude: _mine).first]
+      : pickRobots(bots.length, exclude: _mine);
 
   /// A robot whose picture you picked as your avatar sits out.
   Set<String> get _mine => {for (final r in robotRoster) if (r.avatar == prefs.avatar) r.id};
@@ -61,7 +67,7 @@ class _PracticeSetupScreenState extends State<PracticeSetupScreen> {
         bots.removeLast();
         robots.removeLast();
       });
-  late HouseRules rules = prefs.rules;
+  late HouseRules rules = widget.resume?.lineupRules ?? prefs.rules;
 
   void _start() {
     prefs.practiceBots = List.of(bots);
@@ -72,6 +78,11 @@ class _PracticeSetupScreenState extends State<PracticeSetupScreen> {
       for (final (i, robot) in robots.indexed)
         PlayerInfo('bot$i', '${robot.name} (${levelName(bots[i])})', SeatKind.bot, level: bots[i], avatar: robot.avatar),
     ];
+    if (widget.resume != null) {
+      widget.resume!.changeLineup(players, rules);
+      Navigator.of(context).pop();
+      return;
+    }
     startLocalGame(context, players, rules, hotSeat: false);
   }
 
@@ -83,7 +94,8 @@ class _PracticeSetupScreenState extends State<PracticeSetupScreen> {
         const _TestBadge(),
         Padding(
           padding: const EdgeInsets.only(left: 8, right: 4),
-          child: GoldButton('Start practice', key: const ValueKey('start'), icon: Icons.play_arrow, compact: true, onPressed: _start),
+          child: GoldButton(widget.resume != null ? 'Next round' : 'Start practice',
+              key: const ValueKey('start'), icon: Icons.play_arrow, compact: true, onPressed: _start),
         ),
       ],
       body: ListView(padding: const EdgeInsets.fromLTRB(20, 4, 20, 20), children: [
@@ -148,7 +160,9 @@ class _PracticeSetupScreenState extends State<PracticeSetupScreen> {
 }
 
 class HotSeatSetupScreen extends StatefulWidget {
-  const HotSeatSetupScreen({super.key});
+  /// Between rounds: the game whose players and rules are being changed (Start continues it).
+  final GameSession? resume;
+  const HotSeatSetupScreen({super.key, this.resume});
   @override
   State<HotSeatSetupScreen> createState() => _HotSeatSetupScreenState();
 }
@@ -156,18 +170,26 @@ class HotSeatSetupScreen extends StatefulWidget {
 class _HotSeatSetupScreenState extends State<HotSeatSetupScreen> {
   final prefs = AppPrefs.instance;
   // Player 1 starts as the name saved in Options (still editable here).
-  late final List<TextEditingController> names = [
-    for (final (i, n) in prefs.hotSeatNames.indexed)
-      TextEditingController(text: i == 0 && prefs.name.trim().isNotEmpty ? prefs.name.trim() : n),
-  ];
-  late HouseRules rules = prefs.rules;
+  late final List<TextEditingController> names = widget.resume != null
+      ? [for (final p in widget.resume!.lineup) TextEditingController(text: p.name)]
+      : [
+          for (final (i, n) in prefs.hotSeatNames.indexed)
+            TextEditingController(text: i == 0 && prefs.name.trim().isNotEmpty ? prefs.name.trim() : n),
+        ];
+  late HouseRules rules = widget.resume?.lineupRules ?? prefs.rules;
 
   void _start() {
     final ns = [for (var i = 0; i < names.length; i++) names[i].text.trim().isEmpty ? 'Player ${i + 1}' : names[i].text.trim()];
     prefs.hotSeatNames = ns;
     prefs.rules = rules;
     prefs.save();
-    startLocalGame(context, [for (var i = 0; i < ns.length; i++) PlayerInfo('p$i', ns[i], SeatKind.human)], rules, hotSeat: true);
+    final players = [for (var i = 0; i < ns.length; i++) PlayerInfo('p$i', ns[i], SeatKind.human)];
+    if (widget.resume != null) {
+      widget.resume!.changeLineup(players, rules);
+      Navigator.of(context).pop();
+      return;
+    }
+    startLocalGame(context, players, rules, hotSeat: true);
   }
 
   @override
@@ -178,7 +200,8 @@ class _HotSeatSetupScreenState extends State<HotSeatSetupScreen> {
         const _TestBadge(),
         Padding(
           padding: const EdgeInsets.only(left: 8, right: 4),
-          child: GoldButton('Start', key: const ValueKey('start'), icon: Icons.play_arrow, compact: true, onPressed: _start),
+          child: GoldButton(widget.resume != null ? 'Next round' : 'Start',
+              key: const ValueKey('start'), icon: Icons.play_arrow, compact: true, onPressed: _start),
         ),
       ],
       body: ListView(padding: const EdgeInsets.fromLTRB(20, 4, 20, 20), children: [

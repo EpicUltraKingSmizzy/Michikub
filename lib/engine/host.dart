@@ -343,12 +343,13 @@ class GameHost {
   final _changes = StreamController<void>.broadcast(sync: true);
 
   GameHost({
-    required this.players,
+    required List<PlayerInfo> players,
     required this.rules,
     this.test = TestTools.off,
     this.waitForReady = false,
     int? seed,
-  }) : _rng = math.Random(seed ?? (test.enabled ? test.seed : null) ?? clock.now().microsecondsSinceEpoch) {
+  }) : players = List.of(players),
+        _rng = math.Random(seed ?? (test.enabled ? test.seed : null) ?? clock.now().microsecondsSinceEpoch) {
     for (final p in players) {
       totals[p.id] = 0;
     }
@@ -458,6 +459,27 @@ class GameHost {
   void dispose() {
     _timer?.cancel();
     _changes.close();
+  }
+
+  /// Between rounds (the host changed the players or house rules): the next round deals to
+  /// [next] with [r]. Players who stay keep their running totals (by id); new players start
+  /// at 0. Call [startRound] next.
+  void reconfigure(List<PlayerInfo> next, HouseRules r) {
+    if (result == null && round > 0) return;
+    rules = r;
+    players
+      ..clear()
+      ..addAll(next);
+    final ids = {for (final p in next) p.id};
+    totals.removeWhere((k, _) => !ids.contains(k));
+    for (final id in ids) {
+      totals.putIfAbsent(id, () => 0);
+    }
+    racks.removeWhere((k, _) => !ids.contains(k));
+    disconnected.removeWhere((k) => !ids.contains(k));
+    melded.removeWhere((k) => !ids.contains(k));
+    if (firstStarter != null) firstStarter = firstStarter! % players.length;
+    current = current % players.length;
   }
 
   /// Time ran out: a valid board ends the turn normally; otherwise the

@@ -12,8 +12,11 @@ import '../engine/host.dart';
 import '../engine/meld.dart';
 import '../engine/rack_sort.dart';
 import '../engine/tiles.dart';
+import '../net/online.dart';
 import 'avatar.dart';
+import 'online_screens.dart';
 import 'results.dart';
+import 'setup_screens.dart';
 import 'table_geo.dart';
 import 'theme.dart';
 import 'tiles_view.dart';
@@ -1031,7 +1034,11 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                   if (pv.result != null && !_resultsHidden)
                     Positioned.fill(
                         child: ResultsOverlay(
-                            session: s, view: pv, onLeave: _leave, onMinimize: () => setState(() => _resultsHidden = true))),
+                            session: s,
+                            view: pv,
+                            onLeave: _leave,
+                            onMinimize: () => setState(() => _resultsHidden = true),
+                            onChangeLineup: s.canChangeLineup ? _changeLineup : null)),
                   if (pv.result != null && _resultsHidden)
                     Positioned(
                       right: 10,
@@ -1241,6 +1248,23 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       current: current,
       onLongPress: robot == null ? null : () => _showRobot(sv, robot),
     );
+  }
+
+  /// Between rounds, the host goes back to the players and rules screen: the lobby online, or
+  /// the Practice / Pass-and-play setup. Its Next round button continues this game (same room,
+  /// same connections, running totals kept).
+  void _changeLineup() {
+    final ss = s;
+    final Widget screen;
+    if (ss is NetHostSession) {
+      ss.net.reopenLobby();
+      screen = HostLobbyScreen(net: ss.net, betweenRounds: true);
+    } else if (ss is LocalSession) {
+      screen = ss.hotSeat ? HotSeatSetupScreen(resume: ss) : PracticeSetupScreen(resume: ss);
+    } else {
+      return;
+    }
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
   }
 
   /// Where my own avatar is (bottom-left corner), matching [_myCorner].

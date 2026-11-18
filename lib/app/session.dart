@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../engine/bot.dart';
 import '../engine/host.dart';
+import '../engine/rules.dart';
 
 /// Quick chat: the phrases and emojis a player can send (nothing else is accepted).
 const kQuickChatPhrases = ['BRB', 'Well Played!', 'Nice try!', 'WOW!'];
@@ -46,6 +47,16 @@ abstract class GameSession extends ChangeNotifier {
 
   Future<ActionResult> act(GameAction a);
   void nextRound();
+
+  /// Between rounds, this phone (the host) can change the players and house rules.
+  bool get canChangeLineup => false;
+
+  /// The players and rules now (for the setup screens).
+  List<PlayerInfo> get lineup => const [];
+  HouseRules? get lineupRules => null;
+
+  /// Starts the next round with [players] and [rules]; running totals carry over.
+  void changeLineup(List<PlayerInfo> players, HouseRules rules) {}
 
   /// Quick chat messages seen on this phone, oldest first (the table shows the new ones).
   final List<ChatMsg> chats = [];
@@ -151,6 +162,20 @@ class LocalSession extends GameSession {
 
   @override
   void sendChat(String text) => addChat(_seat, text);
+
+  @override
+  bool get canChangeLineup => host.result != null;
+  @override
+  List<PlayerInfo> get lineup => List.of(host.players);
+  @override
+  HouseRules? get lineupRules => host.rules;
+  @override
+  void changeLineup(List<PlayerInfo> players, HouseRules rules) {
+    host.reconfigure(players, rules);
+    if (hotSeat) _seat = players.first.id;
+    // Bots are driven by id: the driver picks up the new seats on the next turn.
+    nextRound();
+  }
 
   @override
   void nextRound() {

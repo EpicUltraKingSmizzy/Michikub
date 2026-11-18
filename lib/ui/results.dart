@@ -13,7 +13,10 @@ class ResultsOverlay extends StatelessWidget {
 
   /// Hides the panel so the final table shows (a Show results button brings it back).
   final VoidCallback? onMinimize;
-  const ResultsOverlay({super.key, required this.session, required this.view, required this.onLeave, this.onMinimize});
+
+  /// The host: change the players and house rules before the next round.
+  final VoidCallback? onChangeLineup;
+  const ResultsOverlay({super.key, required this.session, required this.view, required this.onLeave, this.onMinimize, this.onChangeLineup});
 
   @override
   Widget build(BuildContext context) {
@@ -74,12 +77,13 @@ class ResultsOverlay extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 14),
-              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                if (session.controlsRounds)
-                  GoldButton('Next round', icon: Icons.replay, onPressed: session.nextRound)
-                else
+              Wrap(alignment: WrapAlignment.center, crossAxisAlignment: WrapCrossAlignment.center, spacing: 12, runSpacing: 8, children: [
+                if (session.controlsRounds) ...[
+                  GoldButton('Next round', icon: Icons.replay, onPressed: session.nextRound),
+                  if (onChangeLineup != null)
+                    GoldButton('Players & rules', key: const ValueKey('changeLineup'), icon: Icons.tune, onPressed: onChangeLineup),
+                ] else
                   Text('Waiting for the host to start the next round…', style: MK.body(13, color: MK.gold)),
-                const SizedBox(width: 12),
                 GoldButton('Home', icon: Icons.home, crimson: true, onPressed: onLeave),
               ]),
             ]),

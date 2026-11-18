@@ -363,11 +363,13 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: GameScreen(session: s)));
     await tester.pump(const Duration(seconds: 3));
     expect(s.coverFor, isNotNull);
-    expect(log, [Sfx.gameStart], reason: 'no chime under the cover');
+    expect(log, isEmpty, reason: 'the deal (wash and animation) waits for the cover, and no chime under it');
     s.dismissCover();
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
-    expect(log, [Sfx.gameStart, Sfx.turnStart]);
+    expect(log, [Sfx.gameStart], reason: 'tapping through: the wash and the deal');
+    await tester.pump(const Duration(seconds: 2));
+    expect(log, [Sfx.gameStart, Sfx.turnStart], reason: 'then the chime, after the wash');
     await tearDownGame(tester);
   });
 }

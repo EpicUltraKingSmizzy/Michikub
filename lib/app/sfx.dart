@@ -23,6 +23,10 @@ enum Sfx {
   /// Tapping 789 / 777 by hand (not the automatic sorts): one of three bursts at random.
   sort(['sort_A', 'sort_B', 'sort_C']),
 
+  /// Long-press picking up a set of 3 or more tiles (rack or table): one of three bursts of
+  /// the attach sound at random.
+  pick(['pick_A', 'pick_B', 'pick_C']),
+
   /// A round's deal (the start of every round, including the first).
   gameStart(['start']),
 

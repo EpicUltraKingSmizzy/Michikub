@@ -45,6 +45,17 @@ class TableTuning {
   /// The turn-start chime waits for the deal's wash (about 1.9 s) on a round's first turn,
   /// and comes just after an opponent's draw sound when their draw starts my turn.
   static const chimeAfterDealMs = 1900;
+
+  /// The deal at the start of a round: every seat's starting tiles fly from the pile, one at a
+  /// time round the table, each flight [dealFlyMs] long, all landed within [dealSpanMs]. That
+  /// is inside the deal's wash (assets/sfx/start.ogg, 1.87 s), so the chime still comes after.
+  static const dealFlyMs = 420;
+
+  /// Tests: the deal animation is off for widget tests that aren't about it
+  /// (test/flutter_test_config.dart); the deal tests turn it back on.
+  @visibleForTesting
+  static bool dealAnimation = true;
+  static const dealSpanMs = 1800;
   static const chimeAfterDrawMs = 250;
   static const flashMs = 650;
   static const shineMs = 750;
@@ -60,7 +71,11 @@ enum _Src { pile, seat }
 class _Spawn {
   final _Src src;
   final String? seat;
-  const _Spawn(this.src, [this.seat]);
+
+  /// The deal: the flight waits [delayMs] (the tile stays hidden), then takes [ms].
+  final int delayMs;
+  final int ms;
+  const _Spawn(this.src, [this.seat, this.delayMs = 0, this.ms = TableTuning.flyMs]);
 }
 
 class _Drag {
@@ -81,7 +96,11 @@ class _BackFlight {
   /// A tile going back from the table to an opponent's rack (shown face up, turning face
   /// down as it lands); null for a face-down draw from the pile.
   final int? tile;
-  _BackFlight(this.who, this.from, this.to, [this.tile]);
+
+  /// The deal: the flight waits [delayMs] (not shown), then takes [ms].
+  final int delayMs;
+  final int ms;
+  _BackFlight(this.who, this.from, this.to, [this.tile, this.delayMs = 0, this.ms = TableTuning.flyMs]);
 }
 
 class GameScreen extends StatefulWidget {
@@ -116,6 +135,14 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
 
   /// The round whose deal sound has played (once per round, even in Pass-and-play).
   int _washRound = -1;
+
+  /// Pass-and-play: a round dealt while the "Pass to…" cover is up. Its wash and deal
+  /// animation wait until the cover is tapped away.
+  int? _dealPending;
+
+  /// The deal animation is running: the table ignores input meanwhile.
+  bool _dealing = false;
+  Timer? _dealTimer;
 
   /// My turn started and its chime hasn't played yet (it waits for the pass-and-play cover).
   int? _chimeSeq;
@@ -216,6 +243,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     _ticker?.cancel();
     _toastTimer?.cancel();
     _bannerTimer?.cancel();
+    _dealTimer?.cancel();
     super.dispose();
   }
 
@@ -308,11 +336,24 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       _dealtRound[nv.me] = nv.round;
       if (_washRound != nv.round) {
         _washRound = nv.round;
-        playSfx(Sfx.gameStart);
-        dealtNow = true;
+        if (s.coverFor != null) {
+          _dealPending = nv.round;
+        } else {
+          playSfx(Sfx.gameStart);
+          dealtNow = true;
+        }
       }
       packed = _sortedEntries(_sortedEntries(packed, false, const {}), true, const {});
       _sortModes[nv.me] = true;
+    }
+    var dealLate = false;
+    if (_dealPending != null && s.coverFor == null) {
+      // Pass-and-play: the first player tapped through the cover. The wash and the deal now.
+      if (_dealPending == nv.round && nv.result == null) {
+        playSfx(Sfx.gameStart);
+        dealLate = true;
+      }
+      _dealPending = null;
     }
     final mode = _sortModes[nv.me];
     // My turn just ended (a draw, or a play): with a sort mode on, the rack is sorted (silently;
@@ -342,7 +383,10 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       _turnStartOrder = List.of(order);
       _turnPulseSeq++;
     }
+    // Pass-and-play: the chime due as the cover goes waits for the wash this time.
+    if (dealLate) _chimeDelayMs = TableTuning.chimeAfterDealMs;
     _turnSounds(old, nv, turnChanged, dealtNow);
+    if (dealtNow || dealLate) _deal(nv, order);
 
     if (!seatChanged && !old.myTurn && old.result == null && nv.result == null && nv.round == old.round) {
       // An opponent took tiles back from the table (or reset, or drew after trying): they fly
@@ -410,6 +454,56 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     _clockRunning = nv.clockRunning;
     v = nv;
     if (mounted) setState(() {});
+  }
+
+  /// The deal animation: each seat's starting tiles fly from the pile, one tile per seat in
+  /// turn (round the table), within [TableTuning.dealSpanMs]. My tiles fly face down and turn
+  /// over into their rack slots (left to right); opponents' land in their face-down racks.
+  /// No draw sound (the wash covers it). Skipped when the system asks for less motion.
+  void _deal(PlayerView nv, List<int> rack) {
+    if (!TableTuning.dealAnimation) return;
+    if (WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations) return;
+    final mine = [for (final t in rack) if (!isRackGap(t)) t];
+    final seats = nv.seats;
+    final counts = [for (final sv in seats) sv.info.id == nv.me ? mine.length : sv.count];
+    final n = seats.length;
+    final most = counts.fold<int>(0, math.max);
+    if (most == 0) return;
+    final steps = most * n;
+    final step = steps <= 1 ? 0 : (TableTuning.dealSpanMs - TableTuning.dealFlyMs) / (steps - 1);
+    int delay(int seat, int i) => ((i * n + seat) * step).round();
+    final meIdx = seats.indexWhere((x) => x.info.id == nv.me);
+    for (var i = 0; i < mine.length; i++) {
+      _spawns[mine[i]] = _Spawn(_Src.pile, null, delay(meIdx, i), TableTuning.dealFlyMs);
+    }
+    void backs() {
+      final g = _geo;
+      if (g == null || !mounted) return;
+      final pos = _seatPositions(nv);
+      for (var j = 0; j < n; j++) {
+        final sv = seats[j];
+        final p = pos[sv.info.id];
+        if (sv.info.id == nv.me || p == null) continue;
+        for (var i = 0; i < sv.count; i++) {
+          _flights.add(_BackFlight(sv.info.id, g.pileRect, g.backRect(p, i, sv.count), null, delay(j, i), TableTuning.dealFlyMs));
+        }
+      }
+    }
+
+    if (_geo != null) {
+      backs();
+    } else {
+      // The very first deal comes before the table has been laid out.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        backs();
+        if (mounted) setState(() {});
+      });
+    }
+    _dealing = true;
+    _dealTimer?.cancel();
+    _dealTimer = Timer(const Duration(milliseconds: TableTuning.dealSpanMs), () {
+      if (mounted) setState(() => _dealing = false);
+    });
   }
 
   void _flyBacks(PlayerView nv, String who, int n) {
@@ -955,6 +1049,8 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     final had = _drag != null;
     _startDrag(tiles, global);
     _longPressing = !had && _drag != null;
+    // Picking up a whole set (3+ tiles) by long-press: a burst of clicks.
+    if (_longPressing && tiles.length >= 3) playSfx(Sfx.pick);
   }
 
   // --- buttons -------------------------------------------------------------
@@ -1197,8 +1293,12 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                       from: f.from,
                       to: f.to,
                       tile: f.tile,
+                      delayMs: f.delayMs,
+                      ms: f.ms,
                       onDone: () => setState(() => _flights.remove(f)),
                     ),
+                  // The deal: the table ignores input until every tile has landed.
+                  if (_dealing) const Positioned.fill(child: AbsorbPointer(key: ValueKey('dealBlock'), child: SizedBox.expand())),
                   ..._chatBubbles(g, pv),
                   if (_chatOpen) ..._chatPicker(g),
                   if (_toast != null) _toastWidget(g),
@@ -1751,6 +1851,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       top: r.top,
       child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
         SizedBox(
+          key: const ValueKey('pile'),
           width: r.width + 4,
           height: r.height + 4,
           child: Stack(children: [
@@ -1871,7 +1972,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       final t = rack[i];
       if (isRackGap(t)) continue;
       if (dragging.contains(t)) continue;
-      out.add(_sprite(t, g.rackSlot(i), spawnRect(t), glow(t), board: false));
+      out.add(_sprite(t, g.rackSlot(i), spawnRect(t), glow(t), board: false, spawn: _spawns[t]));
     }
     if (_drag != null) {
       final sz = _dragTileSize();
@@ -1888,14 +1989,16 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     return out;
   }
 
-  Widget _sprite(int t, Rect rect, Rect? spawn, TileGlow glow,
-      {required bool board, bool instant = false, bool lifted = false, bool newGlow = false}) {
+  Widget _sprite(int t, Rect rect, Rect? from, TileGlow glow,
+      {required bool board, bool instant = false, bool lifted = false, bool newGlow = false, _Spawn? spawn}) {
     return _TileSprite(
       key: ValueKey(t),
       tile: t,
       newGlow: newGlow,
       rect: rect,
-      spawnFrom: spawn,
+      spawnFrom: from,
+      spawnDelayMs: spawn?.delayMs ?? 0,
+      spawnMs: spawn?.ms ?? TableTuning.flyMs,
       glow: glow,
       instant: instant,
       lifted: lifted,
@@ -1974,6 +2077,10 @@ class _TileSprite extends StatefulWidget {
   final int tile;
   final Rect rect;
   final Rect? spawnFrom;
+
+  /// A spawn flight's wait (the tile is hidden meanwhile) and length (the deal's are short).
+  final int spawnDelayMs;
+  final int spawnMs;
   final TileGlow glow;
 
   /// The white "new on the table" glow (fades in and out).
@@ -1992,6 +2099,8 @@ class _TileSprite extends StatefulWidget {
     required this.tile,
     required this.rect,
     required this.spawnFrom,
+    this.spawnDelayMs = 0,
+    this.spawnMs = TableTuning.flyMs,
     required this.glow,
     this.newGlow = false,
     required this.instant,
@@ -2020,21 +2129,53 @@ class _TileSpriteState extends State<_TileSprite> with SingleTickerProviderState
     super.initState();
     _c = AnimationController(vsync: this, value: 1);
     _to = widget.rect;
-    if (widget.spawnFrom != null) {
-      _from = widget.spawnFrom!;
-      _flying = true;
-      _c.duration = const Duration(milliseconds: TableTuning.flyMs);
+    _from = widget.rect;
+    if (widget.spawnFrom != null) _spawn();
+  }
+
+  /// Flies in from [_TileSprite.spawnFrom], after [_TileSprite.spawnDelayMs] (hidden until then).
+  bool _waiting = false;
+  Timer? _wait;
+  void _spawn() {
+    final from = widget.spawnFrom!;
+    void go() {
+      if (!mounted) return;
+      void apply() {
+        _waiting = false;
+        _from = from;
+        _to = widget.rect;
+        _flying = true;
+      }
+
+      if (_waiting) {
+        setState(apply);
+      } else {
+        apply();
+      }
+      _c.duration = Duration(milliseconds: widget.spawnMs);
       _c.forward(from: 0).whenComplete(() {
         if (mounted) setState(() => _flying = false);
       });
+    }
+
+    _wait?.cancel();
+    if (widget.spawnDelayMs > 0) {
+      _waiting = true;
+      _wait = Timer(Duration(milliseconds: widget.spawnDelayMs), go);
     } else {
-      _from = widget.rect;
+      go();
     }
   }
 
   @override
   void didUpdateWidget(covariant _TileSprite old) {
     super.didUpdateWidget(old);
+    if (widget.spawnFrom != null && old.spawnFrom == null) {
+      // A tile already on screen dealt again (a new round): it flies in from the pile.
+      _to = widget.rect;
+      _spawn();
+      return;
+    }
     if (widget.rect != _to) {
       if (widget.instant) {
         _from = _to = widget.rect;
@@ -2060,12 +2201,14 @@ class _TileSpriteState extends State<_TileSprite> with SingleTickerProviderState
 
   @override
   void dispose() {
+    _wait?.cancel();
     _c.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_waiting) return Positioned.fromRect(rect: widget.rect, child: const SizedBox.shrink());
     return AnimatedBuilder(
       animation: _c,
       builder: (ctx, _) {
@@ -2143,23 +2286,46 @@ class _FlyingBack extends StatefulWidget {
   final Rect from, to;
   final int? tile;
   final VoidCallback onDone;
-  const _FlyingBack({super.key, required this.from, required this.to, required this.onDone, this.tile});
+  final int delayMs, ms;
+  const _FlyingBack(
+      {super.key, required this.from, required this.to, required this.onDone, this.tile, this.delayMs = 0, this.ms = TableTuning.flyMs});
   @override
   State<_FlyingBack> createState() => _FlyingBackState();
 }
 
 class _FlyingBackState extends State<_FlyingBack> with SingleTickerProviderStateMixin {
-  late final AnimationController _c =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: TableTuning.flyMs))
-        ..forward().whenComplete(widget.onDone);
+  late final AnimationController _c = AnimationController(vsync: this, duration: Duration(milliseconds: widget.ms));
+  Timer? _wait;
+  bool _waiting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    void go() {
+      if (!mounted) return;
+      if (_waiting) setState(() => _waiting = false);
+      _c.forward().whenComplete(widget.onDone);
+    }
+
+    if (widget.delayMs > 0) {
+      _waiting = true;
+      _wait = Timer(Duration(milliseconds: widget.delayMs), go);
+    } else {
+      go();
+    }
+  }
+
   @override
   void dispose() {
+    _wait?.cancel();
     _c.dispose();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) => AnimatedBuilder(
+  Widget build(BuildContext context) => _waiting
+      ? const Positioned(left: 0, top: 0, child: SizedBox.shrink())
+      : AnimatedBuilder(
         animation: _c,
         builder: (_, _) {
           final t = Curves.easeInOutCubic.transform(_c.value);

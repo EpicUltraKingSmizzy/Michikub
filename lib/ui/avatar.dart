@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../app/avatars.dart';
+import '../app/prefs.dart';
 import 'theme.dart';
 
 /// The one circular avatar frame every player uses: a 3 px #c9a24a gold ring and a drop shadow,
@@ -29,6 +31,9 @@ class PlayerAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final inner = size - ringWidth * 2;
+    // [image] is an avatar id (see avatars.dart): a picture, or a letter avatar's colour.
+    final image = avatarImage(this.image);
+    final color = avatarColor(this.image) ?? this.color;
     final face = Container(
       width: size,
       height: size,
@@ -44,7 +49,7 @@ class PlayerAvatar extends StatelessWidget {
       alignment: Alignment.center,
       child: image != null
           ? ClipOval(
-              child: Image.asset(image!, width: inner, height: inner, fit: BoxFit.cover, filterQuality: FilterQuality.medium),
+              child: Image.asset(image, width: inner, height: inner, fit: BoxFit.cover, filterQuality: FilterQuality.medium),
             )
           : Text(
               name.isEmpty ? '?' : name.characters.first.toUpperCase(),
@@ -52,5 +57,83 @@ class PlayerAvatar extends StatelessWidget {
             ),
     );
     return onLongPress == null ? face : GestureDetector(behavior: HitTestBehavior.opaque, onLongPress: onLongPress, child: face);
+  }
+}
+
+/// Opens "Select your avatar": a grid of the avatar set. Picking one saves it (it's used in
+/// every game and sent to online players). Returns the id picked, or null.
+Future<String?> showAvatarPicker(BuildContext context) async {
+  final prefs = AppPrefs.instance;
+  final picked = await showDialog<String>(
+    context: context,
+    builder: (ctx) => Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 640),
+        child: MkPanel(
+          padding: const EdgeInsets.fromLTRB(16, 8, 8, 12),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Row(children: [
+              Expanded(child: Text('Select your avatar', style: MK.title(20))),
+              IconButton(key: const ValueKey('avatarClose'), onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close, color: MK.goldLight)),
+            ]),
+            Flexible(
+              child: GridView.extent(
+                shrinkWrap: true,
+                maxCrossAxisExtent: 64,
+                mainAxisSpacing: 8,
+                crossAxisSpacing: 8,
+                children: [
+                  for (final id in avatarChoices)
+                    GestureDetector(
+                      key: ValueKey('avatar:$id'),
+                      onTap: () => Navigator.pop(ctx, id),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          boxShadow: [if (id == prefs.avatar) const BoxShadow(color: Color(0xEEFFE9A8), blurRadius: 10, spreadRadius: 3)],
+                        ),
+                        child: PlayerAvatar(size: 56, name: prefs.name, image: id),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ]),
+        ),
+      ),
+    ),
+  );
+  if (picked != null) {
+    prefs.avatar = picked;
+    await prefs.save();
+  }
+  return picked;
+}
+
+/// Your avatar, tappable to change it (Options and Join screens).
+class MyAvatarButton extends StatefulWidget {
+  final double size;
+  const MyAvatarButton({super.key, this.size = 48});
+  @override
+  State<MyAvatarButton> createState() => _MyAvatarButtonState();
+}
+
+class _MyAvatarButtonState extends State<MyAvatarButton> {
+  @override
+  Widget build(BuildContext context) {
+    final prefs = AppPrefs.instance;
+    return Tooltip(
+      message: 'Select your avatar',
+      child: GestureDetector(
+        key: const ValueKey('avatarButton'),
+        onTap: () async {
+          await showAvatarPicker(context);
+          if (mounted) setState(() {});
+        },
+        child: PlayerAvatar(size: widget.size, name: prefs.name, image: prefs.avatar),
+      ),
+    );
   }
 }

@@ -10,6 +10,9 @@ import '../engine/rules.dart';
 class AppPrefs extends ChangeNotifier {
   SharedPreferences? _p;
   String name = 'Player';
+
+  /// Your avatar (an id from avatars.dart), or null for your initial.
+  String? avatar;
   HouseRules rules = HouseRules.classic;
   Map<String, HouseRules> presets = {};
   TestTools test = TestTools.off;
@@ -28,6 +31,7 @@ class AppPrefs extends ChangeNotifier {
     }
     final p = _p!;
     name = p.getString('name') ?? name;
+    avatar = p.getString('avatar');
     haptics = p.getBool('haptics') ?? true;
     highlightValid = p.getBool('highlightValid') ?? true;
     final r = p.getString('rules');
@@ -51,6 +55,11 @@ class AppPrefs extends ChangeNotifier {
     final p = _p;
     if (p == null) return;
     await p.setString('name', name);
+    if (avatar == null) {
+      await p.remove('avatar');
+    } else {
+      await p.setString('avatar', avatar!);
+    }
     await p.setBool('haptics', haptics);
     await p.setBool('highlightValid', highlightValid);
     await p.setString('rules', jsonEncode(rules.toJson()));

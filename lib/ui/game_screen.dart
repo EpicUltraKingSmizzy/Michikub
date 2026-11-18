@@ -1231,7 +1231,8 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
 
   Widget _avatar(SeatView sv, double size, {bool current = false}) {
     final idx = v!.seats.indexOf(sv);
-    final robot = robotByAvatar(sv.info.avatar);
+    // A person may pick a robot's picture; only bots show a robot's profile.
+    final robot = sv.info.kind == SeatKind.bot ? robotByAvatar(sv.info.avatar) : null;
     return PlayerAvatar(
       size: size,
       name: sv.info.name,

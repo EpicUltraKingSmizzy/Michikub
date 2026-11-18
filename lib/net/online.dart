@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../app/avatars.dart';
 import '../app/bot_roster.dart';
 import '../app/session.dart';
 import '../engine/bot.dart';
@@ -35,8 +36,8 @@ class NetHost extends ChangeNotifier {
   final List<StreamSubscription<dynamic>> _subs = [];
 
   /// [open] = false skips opening the room on the matchmaking service (tests).
-  NetHost(this.myName, this.rules, {bool open = true}) {
-    seats.add(NetSeat(PlayerInfo('host', myName, SeatKind.human)));
+  NetHost(this.myName, this.rules, {bool open = true, String? avatar}) {
+    seats.add(NetSeat(PlayerInfo('host', myName, SeatKind.human, avatar: avatar)));
     if (open) {
       _open();
     } else {
@@ -142,7 +143,9 @@ class NetHost extends ChangeNotifier {
           return;
         }
         _guests++;
-        final info = PlayerInfo('g$_guests', name.isEmpty ? 'Friend $_guests' : name, SeatKind.remote);
+        final av = m['avatar'];
+        final info = PlayerInfo('g$_guests', name.isEmpty ? 'Friend $_guests' : name, SeatKind.remote,
+            avatar: av is String && isKnownAvatar(av) ? av : null);
         seats.add(NetSeat(info, link));
         link.send(jsonEncode({'t': 'welcome', 'id': info.id}));
         _broadcastLobby();
@@ -286,7 +289,10 @@ class NetGuest extends ChangeNotifier {
   NetGuestSession? session;
   StreamSubscription<String>? _sub;
 
-  NetGuest.code(this.myName, this.code) {
+  /// Your avatar id, sent to the host when joining.
+  final String? avatar;
+
+  NetGuest.code(this.myName, this.code, {this.avatar}) {
     _connectCode();
   }
 
@@ -307,7 +313,7 @@ class NetGuest extends ChangeNotifier {
     link = l;
     status = 'Connected. Waiting for the host to start…';
     _sub = l.messages.listen(_onMessage);
-    l.send(jsonEncode({'t': 'hello', 'name': myName, 'seat': seatId}));
+    l.send(jsonEncode({'t': 'hello', 'name': myName, 'seat': seatId, 'avatar': avatar}));
     l.closed.then((_) {
       error ??= 'Lost the connection to the host.';
       session?.setStatus('Connection lost. Ask the host to keep the game open and rejoin with the same name.');

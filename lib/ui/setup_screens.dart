@@ -47,11 +47,14 @@ class _PracticeSetupScreenState extends State<PracticeSetupScreen> {
   late List<BotLevel> bots = List.of(prefs.practiceBots);
 
   /// The robots for this game, picked at random when the screen opens (Shuffle picks again).
-  late List<RobotProfile> robots = pickRobots(bots.length);
+  late List<RobotProfile> robots = pickRobots(bots.length, exclude: _mine);
+
+  /// A robot whose picture you picked as your avatar sits out.
+  Set<String> get _mine => {for (final r in robotRoster) if (r.avatar == prefs.avatar) r.id};
 
   void _addBot() => setState(() {
         bots.add(BotLevel.medium);
-        robots.addAll(pickRobots(1, exclude: {for (final r in robots) r.id}));
+        robots.addAll(pickRobots(1, exclude: {for (final r in robots) r.id, ..._mine}));
       });
 
   void _removeBot() => setState(() {
@@ -65,7 +68,7 @@ class _PracticeSetupScreenState extends State<PracticeSetupScreen> {
     prefs.rules = rules;
     prefs.save();
     final players = [
-      PlayerInfo('me', prefs.name, SeatKind.human),
+      PlayerInfo('me', prefs.name, SeatKind.human, avatar: prefs.avatar),
       for (final (i, robot) in robots.indexed)
         PlayerInfo('bot$i', '${robot.name} (${levelName(bots[i])})', SeatKind.bot, level: bots[i], avatar: robot.avatar),
     ];

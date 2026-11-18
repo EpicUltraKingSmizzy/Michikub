@@ -45,7 +45,7 @@ class HostLobbyScreen extends StatefulWidget {
 
 class _HostLobbyScreenState extends State<HostLobbyScreen> {
   final prefs = AppPrefs.instance;
-  late final NetHost net = (widget.net ?? NetHost(prefs.name, prefs.rules))..addListener(_changed);
+  late final NetHost net = (widget.net ?? NetHost(prefs.name, prefs.rules, avatar: prefs.avatar))..addListener(_changed);
   bool _started = false;
 
   /// Back (app bar, Android back button or gesture, iOS swipe) asks first. Yes closes the room
@@ -219,7 +219,7 @@ class _JoinScreenState extends State<JoinScreen> {
     if (code.length < 4) return;
     _saveName();
     lastRoomCode = code;
-    final g = NetGuest.code(prefs.name, code);
+    final g = NetGuest.code(prefs.name, code, avatar: prefs.avatar);
     Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => GuestLobbyScreen(guest: g)));
   }
 
@@ -231,6 +231,8 @@ class _JoinScreenState extends State<JoinScreen> {
         MkPanel(
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Row(children: [
+              const MyAvatarButton(),
+              const SizedBox(width: 10),
               SizedBox(width: 200, child: TextField(controller: nameCtl, maxLength: 16, decoration: const InputDecoration(labelText: 'Your name', counterText: ''))),
               const SizedBox(width: 12),
               SizedBox(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app/prefs.dart';
+import 'avatar.dart';
 import 'rules_editor.dart';
 import 'theme.dart';
 
@@ -33,15 +34,19 @@ class _OptionsScreenState extends State<OptionsScreen> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Text('You', style: MK.body(15, weight: FontWeight.w700)),
               const SizedBox(height: 8),
-              SizedBox(
-                width: 260,
-                child: TextField(
-                  controller: nameCtl,
-                  maxLength: 16,
-                  decoration: const InputDecoration(labelText: 'Your name', counterText: ''),
-                  onSubmitted: (_) => _save(),
+              Row(children: [
+                const MyAvatarButton(),
+                const SizedBox(width: 12),
+                SizedBox(
+                  width: 260,
+                  child: TextField(
+                    controller: nameCtl,
+                    maxLength: 16,
+                    decoration: const InputDecoration(labelText: 'Your name', counterText: ''),
+                    onSubmitted: (_) => _save(),
+                  ),
                 ),
-              ),
+              ]),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: Text('Vibration', style: MK.body(14)),

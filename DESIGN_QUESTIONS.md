@@ -196,4 +196,11 @@ Most numbers live in a small set of constants: `BotTuning` (lib/engine/bot.dart)
 101. **How does quick chat work?** *(New in v0.1.8, your request.)* Tap your own avatar to choose a phrase (BRB, Well Played!, Nice try!, WOW!) or an emoji. A phrase shows in a speech bubble for 3 seconds, and an emoji for 2. The bubble shows above your own avatar, left of a right-seat player's, right of a left-seat player's, and below the top seat's. Online it reaches everyone, and only these phrases and emojis are allowed (no free text). Bots don't chat.
 102. **When does the rack raise its tiles?** *(New in v0.1.8, your request.)* When no sort mode is selected and your top rack row is empty but the bottom row has tiles, those tiles move up into the same columns of the top row. Their spacing is kept. With a sort mode selected, the sort decides the layout instead.
 103. **How is the rack sorted when a round starts?** *(New in v0.1.8, your request.)* At every deal the rack is sorted once by 777 and then by 789, and 789 is selected as the sort mode (#88). Tapping 777 or moving a tile by hand changes it as usual.
-*(Not in v0.1.8: sound effects. The candidates are waiting for your decision.)*
+104. **Which sounds are there, and when do they play?** *(New in v0.1.8, your picks.)*
+    - **Draw:** a single tile click. It plays when anyone draws: you, an opponent or a bot, by tapping Draw or when the turn times out.
+    - **Attach:** a chip-collide clack when you place tiles on the table, either a new set or attaching to one. Moving tiles back to your rack is silent.
+    - **Menu buttons:** a chip-stack click on the gold buttons (home screen modes, setup, results and menus).
+    - **Sort:** tapping 789 or 777 yourself plays one of three short tile bursts at random. The automatic sorts (after a draw, a tile coming back from the table, Reset, or the deal) are silent.
+    - **Not yet:** failed placements, splitting and the game start have no sound. The start sound has a hook ready for when you choose one.
+    - **How they play:** they're preloaded and play with low latency, and quick repeats can overlap. They mix with your music instead of pausing it. On iPhone they follow the silent switch. Android has no silent switch for app sounds, so they follow the media volume. Options has a Sound on/off switch (on by default, saved).
+    - **Licences:** all the sounds are CC0. Sources are in assets/sfx/CREDITS.md.

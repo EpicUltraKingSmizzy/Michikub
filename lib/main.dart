@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import 'app/bot_roster.dart';
 import 'app/prefs.dart';
+import 'app/sfx.dart';
 import 'engine/host.dart';
 import 'engine/rules.dart';
 import 'net/invite_link.dart';
@@ -21,6 +22,7 @@ Future<void> main() async {
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   await AppPrefs.instance.load();
   registerFontLicenses();
+  SoundBoard.instance.init();
   runApp(const MichikubApp());
 }
 

@@ -15,6 +15,7 @@ dependencies:
   clock: ^1.1.1
   share_plus: ^13.3.1
   app_links: ^7.2.2
+  audioplayers: ^6.8.1
 
 dev_dependencies:
   flutter_test:
@@ -30,6 +31,7 @@ flutter:
     - assets/textures/
     - assets/bots/
     - assets/avatars/
+    - assets/sfx/
     - assets/icon/michikub_icon_1024.png
     - assets/fonts/SpaceGrotesk-OFL.txt
   fonts:

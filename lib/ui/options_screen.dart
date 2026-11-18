@@ -67,7 +67,17 @@ class _OptionsScreenState extends State<OptionsScreen> {
                   _save();
                 },
               ),
-              Text('Sound: none in this version.', style: MK.body(11, color: MK.gold)),
+              SwitchListTile(
+                key: const ValueKey('soundSwitch'),
+                contentPadding: EdgeInsets.zero,
+                title: Text('Sound', style: MK.body(14)),
+                subtitle: Text('Tile clicks when drawing, placing and sorting, and on menu buttons', style: MK.body(11, color: MK.gold)),
+                value: prefs.sound,
+                onChanged: (v) {
+                  prefs.sound = v;
+                  _save();
+                },
+              ),
             ]),
           ),
           const SizedBox(height: 12),

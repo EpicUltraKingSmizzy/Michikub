@@ -17,6 +17,9 @@ class AppPrefs extends ChangeNotifier {
   Map<String, HouseRules> presets = {};
   TestTools test = TestTools.off;
   bool haptics = true;
+
+  /// Sound effects (Options).
+  bool sound = true;
   bool highlightValid = true;
   List<BotLevel> practiceBots = [BotLevel.medium];
   List<String> hotSeatNames = ['Player 1', 'Player 2'];
@@ -33,6 +36,7 @@ class AppPrefs extends ChangeNotifier {
     name = p.getString('name') ?? name;
     avatar = p.getString('avatar');
     haptics = p.getBool('haptics') ?? true;
+    sound = p.getBool('sound') ?? true;
     highlightValid = p.getBool('highlightValid') ?? true;
     final r = p.getString('rules');
     if (r != null) rules = HouseRules.fromJson(jsonDecode(r) as Map<String, dynamic>);
@@ -61,6 +65,7 @@ class AppPrefs extends ChangeNotifier {
       await p.setString('avatar', avatar!);
     }
     await p.setBool('haptics', haptics);
+    await p.setBool('sound', sound);
     await p.setBool('highlightValid', highlightValid);
     await p.setString('rules', jsonEncode(rules.toJson()));
     await p.setString('presets', jsonEncode({for (final e in presets.entries) e.key: e.value.toJson()}));

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:michikub/app/prefs.dart';
 import 'package:michikub/app/session.dart';
+import 'package:michikub/app/sfx.dart';
 import 'package:michikub/engine/board.dart';
 import 'package:michikub/engine/host.dart';
 import 'package:michikub/engine/rack_sort.dart';
@@ -168,5 +169,40 @@ void main() {
     await tester.pump(const Duration(milliseconds: 2500));
     expect(find.byKey(const ValueKey('chat-p1')), findsNothing);
     await tearDownGame(tester);
+  });
+
+  testWidgets('sounds: draw, attach, menu click, and the shuffle only for a hand sort', (tester) async {
+    await setUpGame(tester, annRack: [y(1), y(2), y(3)]);
+    final log = SoundBoard.instance.log..clear();
+    // A hand sort: the shuffle.
+    await tester.tap(find.byKey(const ValueKey('sort777')));
+    await tester.pump();
+    expect(log, [Sfx.sort]);
+    log.clear();
+    // Placing a tile on the table: attach.
+    final tile = s.view!.rack.firstWhere((t) => find.byKey(ValueKey(t)).evaluate().isNotEmpty);
+    await tester.tap(find.byKey(ValueKey(tile)));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tapAt(const Offset(600, 180));
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(log, [Sfx.attach]);
+    log.clear();
+    // Opponent and own draws: the draw sound, and the automatic sort is silent.
+    host.handle('p0', const DrawAction());
+    await tester.pump(const Duration(seconds: 2));
+    host.handle('p1', const DrawAction());
+    await tester.pump(const Duration(seconds: 2));
+    expect(log, [Sfx.draw, Sfx.draw]);
+    log.clear();
+    await tearDownGame(tester);
+  });
+
+  testWidgets('sounds: menu buttons click', (tester) async {
+    final log = SoundBoard.instance.log..clear();
+    var tapped = false;
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: Center(child: GoldButton('Go', onPressed: () => tapped = true)))));
+    await tester.tap(find.text('Go'));
+    expect(tapped, true);
+    expect(log, [Sfx.click]);
   });
 }

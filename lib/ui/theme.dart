@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../app/sfx.dart';
+
 /// Michikub palette: mahogany browns, crimson velvet and gold.
 class MK {
   static const ink = Color(0xFF0B0705);
@@ -155,7 +157,12 @@ class GoldButton extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(40),
-          onTap: onPressed,
+          onTap: onPressed == null
+              ? null
+              : () {
+                  playSfx(Sfx.click);
+                  onPressed!();
+                },
           child: Ink(
             padding: EdgeInsets.symmetric(horizontal: compact ? 14 : 22, vertical: compact ? 8 : 12),
             decoration: BoxDecoration(

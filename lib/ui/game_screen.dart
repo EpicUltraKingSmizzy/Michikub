@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../app/bot_roster.dart';
 import '../app/keep_alive.dart';
+import '../app/sfx.dart';
 import '../app/prefs.dart';
 import '../app/session.dart';
 import '../engine/board.dart';
@@ -239,6 +240,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     if (nv.round > 0 && nv.result == null && _dealtRound[nv.me] != nv.round) {
       // A fresh deal: sorted 777 then 789, with 789 selected.
       _dealtRound[nv.me] = nv.round;
+      if (nv.round == 1) playSfx(Sfx.gameStart); // Silent until a start sound is chosen.
       packed = _sortedEntries(_sortedEntries(packed, false, const {}), true, const {});
       _sortModes[nv.me] = true;
     }
@@ -268,6 +270,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     }
     if (!seatChanged) {
       if (nv.drawSeq != _drawSeq && nv.drawPlayer != null) {
+        playSfx(Sfx.draw);
         if (nv.drawPlayer == nv.me) {
           for (final t in fresh) {
             _spawns[t] = const _Spawn(_Src.pile);
@@ -415,6 +418,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     }
     _history.add(working);
     working = b;
+    if (moved != null && moved.isNotEmpty) playSfx(Sfx.attach);
     _selected.clear();
     _groupSel = false;
     if (moved != null && moved.isNotEmpty) {
@@ -867,6 +871,12 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   /// 789 / 777: valid sets of 3+ to the top left (each followed by a blank slot), then the rest
   /// sorted. This packs the rack (no other blanks); a set doesn't straddle the row break.
   /// Sorts now and selects that mode (see [_sortModes]).
+  /// The 789 / 777 buttons: sorts with the shuffle sound (automatic sorts are silent).
+  void _sortByHand(bool runs) {
+    playSfx(Sfx.sort);
+    _sort(runs);
+  }
+
   void _sort(bool runs) {
     final sorted = _sortedEntries(_order, runs, _myTurn ? working.allTiles.toSet() : const {});
     _sortModes[v?.me ?? ''] = runs;
@@ -1224,13 +1234,13 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
           Tooltip(
             message: 'Sort: sets first, then runs order',
             child: RingButton(
-                key: const ValueKey('sort789'), size: 46, selected: _sortMode == true, onPressed: () => _sort(true), child: _sortLabel('789', _sortMode == true)),
+                key: const ValueKey('sort789'), size: 46, selected: _sortMode == true, onPressed: () => _sortByHand(true), child: _sortLabel('789', _sortMode == true)),
           ),
           const SizedBox(height: 6),
           Tooltip(
             message: 'Sort: sets first, then groups order',
             child: RingButton(
-                key: const ValueKey('sort777'), size: 46, selected: _sortMode == false, onPressed: () => _sort(false), child: _sortLabel('777', _sortMode == false)),
+                key: const ValueKey('sort777'), size: 46, selected: _sortMode == false, onPressed: () => _sortByHand(false), child: _sortLabel('777', _sortMode == false)),
           ),
         ]),
       ),

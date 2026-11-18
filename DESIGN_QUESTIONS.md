@@ -222,3 +222,16 @@ Most numbers live in a small set of constants: `BotTuning` (lib/engine/bot.dart)
     - **Opponents:** their turns starting and ending make no sound; only their draws play the draw sound.
     - The deal's wash plays once per round, also in Pass-and-play. It used to play again when the second player first saw the round.
     - All of these follow the Sound switch.
+107. **Where do invalid-move messages show?** *(New after v0.1.9, your request.)* In the strip above the table. The bottom of the message sits just above the top row of the table, and a long message wraps upward. It can cover the top opponent's avatar and face-down tiles, and its right end can reach the pile on a narrow screen, but it never covers a table tile.
+108. **Adding a run piece to a run with those numbers** *(New after v0.1.9, your request.)* It splits the run, the same as adding one tile. Yellow 7-8 added to yellow 5-6-7-8-9 makes 5-6-7-8 and 7-8-9.
+    - The run splits after the piece's last number, and the piece starts the second part. If the piece goes past the run's end, the run splits at its end: 8-9-10 added to 5-6-7-8-9 makes 5-6-7-8-9 and 8-9-10.
+    - The piece must be one colour, with no gaps and no jokers. Its first number must be a real tile in the run (a joker in that spot is the joker swap's job).
+    - This works for both tap and drag. Like the one-tile split, it happens only when the piece doesn't simply attach at an end.
+109. **Bridging: a move joins sets across a gap** *(New after v0.1.9, your request.)* When your move puts tiles on the table, a nearby set in the same row joins too when the result is a valid set. Sets in the same row count as nearby only if nothing but empty spaces lies between them.
+    - **Runs:** if your tiles go on an end of a set, the nearest set past that end joins. 5 _ _ 7 + 6, tapped onto the 5 or onto the 7, makes 5-6-7. 3-4-5 _ 7-8 + 6 makes 3-4-5-6-7-8. 3-4 _ _ 7 + a 5-6 piece makes 3-4-5-6-7. The set on the far side never joins: 2 _ 3-4 + 5 on the end of the 3-4 leaves the 2 alone.
+    - **Groups:** a nearby set on either side can join, the nearer one first, then the other if the group is still valid (at most 4 tiles, no repeated colour). Only stranded tiles join: a lone tile or an unfinished pair, never a set that is already valid. 6-6 _ 6 + 6 makes a group of 4. 6-6 _ 6-7-8 + 6 makes 6-6-6 and leaves 6-7-8 alone.
+    - **Dropped into the gap:** if your tiles land as their own set between two sets, they join only if all three make a valid set. 3-4 _ _ _ 7 + 5-6 makes 3-4-5-6-7, and 6 _ _ _ 6 + a 6-6 piece makes a group of 4. It never joins just one side, because tiles set down in a gap without touching anything stay where you put them.
+    - **Sets are never split:** a set joins whole or not at all. Nothing is ever taken out of another set.
+    - **Tap and drag:** both work the same, whether you tap a set, drag onto it, tap an empty cell, or long-press a piece and tap a spot.
+    - **When it doesn't happen:** after a split (#108), the joker swap, or putting a tile into the middle of a run.
+    - **Bots:** they place sets their own way and don't bridge.

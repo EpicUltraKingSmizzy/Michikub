@@ -262,6 +262,10 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   @visibleForTesting
   void debugSetWorking(Board b) => _setWorking(b);
 
+  /// Tests: the table as I've arranged it this turn.
+  @visibleForTesting
+  Board get debugWorking => working;
+
   /// Tests: my rack's slots (tiles and blanks).
   @visibleForTesting
   List<int> get debugRackOrder => List.of(_order);
@@ -737,9 +741,9 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     if (row < tmp.rowCount && tmp.rows[row][col] >= 0) {
       final blk = tmp.blockOf(tmp.rows[row][col])!;
       final idx = (col - blk.start) + (frac > .5 ? 1 : 0);
-      return Layout.dropInto(tmp, tiles, blk.tiles.first, idx, col: col);
+      return Layout.bridge(tmp, Layout.dropInto(tmp, tiles, blk.tiles.first, idx, col: col), tiles);
     }
-    return Layout.place(tmp, tiles, row, col);
+    return Layout.bridge(tmp, Layout.place(tmp, tiles, row, col), tiles);
   }
 
   void _onTap(int t) {
@@ -782,7 +786,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     final at = Layout.attachEnd(blk.tiles, sel, blk.tiles.indexOf(target), allowPartial: true);
     if (at != null) {
       _groupSel = false;
-      _setWorking(Layout.insertInto(tmp, sel, blk.tiles.first, at), moved: sel);
+      _setWorking(Layout.bridge(tmp, Layout.insertInto(tmp, sel, blk.tiles.first, at), sel), moved: sel);
       return;
     }
     // No valid end: the joker swap shortcut, then the split for a number the run already has.
@@ -815,7 +819,8 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     if (_groupSel) {
       // A long-press selection lands as a new set at the tapped spot (snap and layout rules apply).
       _groupSel = false;
-      _setWorking(Layout.place(working, sel, c.row, c.col, merge: false), moved: sel);
+      final tmp = working.copy()..removeTiles(sel);
+      _setWorking(Layout.bridge(tmp, Layout.place(working, sel, c.row, c.col, merge: false), sel), moved: sel);
       return;
     }
     _setWorking(_placeAt(sel, c.row, c.col, 0), moved: sel);
@@ -1844,13 +1849,17 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     );
   }
 
+  /// Messages sit in the strip above the board, their bottom edge just above the top board
+  /// row, so they never cover a table tile (they may cover the top seat's avatar and backs).
+  /// A long message wraps upward.
   Widget _toastWidget(TableGeo g) => Positioned(
-        top: g.topH + 6,
-        left: 0,
-        right: 0,
+        bottom: g.size.height - math.min(g.boardRect.top, g.boardOrigin.dy) + 2,
+        left: g.boardRect.left,
+        right: g.boardRect.right > 0 ? g.size.width - g.boardRect.right : 0,
         child: IgnorePointer(
           child: Center(
             child: Container(
+              key: const ValueKey('toast'),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
                 color: const Color(0xEE1A0805),

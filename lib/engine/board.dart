@@ -315,20 +315,130 @@ class Layout {
   /// A tile added to a run that already has its number: the run splits there and the tile
   /// joins the second part. A yellow 4 added to yellow 3-4-5-6 makes 3-4 and 4-5-6. Only
   /// for a single numbered tile of the run's colour and a valid run holding that number as a
-  /// real tile (a joker standing for it is the joker swap's job). Returns null otherwise.
+  /// real tile (a joker standing for it is the joker swap's job).
+  ///
+  /// A run piece (2+ numbered tiles of one colour in a row) works the same way: the run splits
+  /// after the piece's last number (or at the run's end) and the piece starts the second part.
+  /// Yellow 7-8 added to yellow 5-6-7-8-9 makes 5-6-7-8 and 7-8-9. The piece's first number
+  /// must be a real tile of the run. Returns null otherwise.
   static Board? splitDuplicate(Board board, List<int> tiles, int setTile) {
-    if (tiles.length != 1 || isJoker(tiles.single)) return null;
-    final t = tiles.single;
+    if (tiles.isEmpty || tiles.any(isJoker)) return null;
+    final t = tiles.first;
+    for (var k = 1; k < tiles.length; k++) {
+      if (tileColor(tiles[k]) != tileColor(t) || tileNumber(tiles[k]) != tileNumber(t) + k) return null;
+    }
     final b = board.copy()..removeTiles(tiles);
     final blk = b.blockOf(setTile);
-    if (blk == null || analyzeMeld(blk.tiles)?.kind != MeldKind.run) return null;
-    final i = blk.tiles.indexWhere((x) => !isJoker(x) && tileNumber(x) == tileNumber(t));
-    if (i < 0 || tileColor(blk.tiles[i]) != tileColor(t)) return null;
-    final left = blk.tiles.sublist(0, i + 1);
-    final right = [t, ...blk.tiles.sublist(i + 1)];
+    if (blk == null) return null;
+    final info = analyzeMeld(blk.tiles);
+    if (info?.kind != MeldKind.run) return null;
+    final values = info!.values;
+    final i = values.indexOf(tileNumber(t));
+    if (i < 0 || isJoker(blk.tiles[i]) || tileColor(blk.tiles[i]) != tileColor(t)) return null;
+    final j = values.indexOf(math.min(tileNumber(tiles.last), values.last));
+    final left = blk.tiles.sublist(0, j + 1);
+    final right = [...tiles, ...blk.tiles.sublist(j + 1)];
     b.clearBlock(blk);
     b.writeBlock(Block(blk.row, blk.start, left));
     return place(b, right, blk.row, blk.start + left.length + 1, merge: false);
+  }
+
+  /// Bridging, after the player put [sel] on the table (tap or drag). [pre] is the table
+  /// before, without [sel]; [post] the table after. Sets in the same row with only empty
+  /// spaces between them join the set [sel] ended up in, whole, when the result is a valid set:
+  ///  * runs: [sel] added to an end of a set joins the nearest set beyond that end
+  ///    (5 _ _ 7 + 6 on the 5 or on the 7 makes 5-6-7; 3-4-5 _ 7-8 + 6 makes 3-4-5-6-7-8);
+  ///  * groups: the nearest set on either side (nearer first, then the other) joins if it isn't
+  ///    already a valid set itself, i.e. a stranded lone tile or unfinished pair
+  ///    (6-6 _ 6 + 6 makes 6-6-6-6; 6-6 _ 6-7-8 + 6 makes 6-6-6 and leaves 6-7-8 alone);
+  ///  * [sel] set down as its own set between two sets joins both if all three make a valid
+  ///    set (3-4 _ _ _ 7 + 5-6 dropped in the gap makes 3-4-5-6-7; 6 _ _ _ 6 + 6-6 makes a
+  ///    group of 4), never just one side.
+  /// Sets are never split: a set joins whole or not at all. Splits, middle inserts into runs
+  /// and anything else return [post] unchanged. Only the player's moves use this (not bots).
+  static Board bridge(Board pre, Board post, List<int> sel) {
+    if (sel.isEmpty) return post;
+    final x = post.blockOf(sel.first);
+    if (x == null) return post;
+    final xi = x.tiles.indexOf(sel.first);
+    if (xi < 0 || xi + sel.length > x.length) return post;
+    for (var k = 0; k < sel.length; k++) {
+      if (x.tiles[xi + k] != sel[k]) return post; // sel no longer in one piece
+    }
+    final a = [...x.tiles.sublist(0, xi), ...x.tiles.sublist(xi + sel.length)];
+    // The span sel joined (or landed in) on the table before: its row and columns.
+    int row, from, to;
+    if (a.isEmpty) {
+      row = x.row;
+      from = x.start;
+      to = x.end;
+    } else {
+      final ab = pre.blockOf(a.first);
+      if (ab == null || ab.length != a.length) return post; // a split, not an attach
+      for (var k = 0; k < a.length; k++) {
+        if (ab.tiles[k] != a[k]) return post;
+      }
+      row = ab.row;
+      from = ab.start;
+      to = ab.end;
+    }
+    if (row >= pre.rowCount) return post;
+    final inRow = pre.blocksInRow(row);
+    Block? leftOf, rightOf;
+    for (final blk in inRow) {
+      if (blk.end <= from) leftOf = blk;
+      if (blk.start >= to && rightOf == null) rightOf = blk;
+    }
+    // The candidates, as they sit in [post]: same tiles, same row as x.
+    Block? live(Block? p) {
+      if (p == null) return null;
+      final q = post.blockOf(p.tiles.first);
+      if (q == null || q.row != x.row || q.length != p.length) return null;
+      for (var k = 0; k < p.length; k++) {
+        if (q.tiles[k] != p.tiles[k]) return null;
+      }
+      return q;
+    }
+
+    final l = live(leftOf), r = live(rightOf);
+    var tiles = x.tiles;
+    final joined = <Block>[];
+    if (a.isEmpty) {
+      if (l == null || r == null) return post;
+      final all = [...l.tiles, ...x.tiles, ...r.tiles];
+      if (!isValidMeld(all)) return post;
+      tiles = all;
+      joined.addAll([l, r]);
+    } else if (Board.isGroupLike(x.tiles)) {
+      final sides = [
+        if (l != null) (blk: l, left: true, gap: from - leftOf!.end),
+        if (r != null) (blk: r, left: false, gap: rightOf!.start - to),
+      ]..sort((p, q) => p.gap - q.gap);
+      for (final s in sides) {
+        if (isValidMeld(s.blk.tiles)) continue; // a finished set is never taken
+        final c = s.left ? [...s.blk.tiles, ...tiles] : [...tiles, ...s.blk.tiles];
+        if (isValidMeld(c)) {
+          tiles = c;
+          joined.add(s.blk);
+        }
+      }
+    } else if (xi == 0 && l != null && isValidMeld([...l.tiles, ...tiles])) {
+      tiles = [...l.tiles, ...tiles];
+      joined.add(l);
+    } else if (xi + sel.length == x.length && xi > 0 && r != null && isValidMeld([...tiles, ...r.tiles])) {
+      tiles = [...tiles, ...r.tiles];
+      joined.add(r);
+    }
+    if (joined.isEmpty) return post;
+    final b = post.copy();
+    b.clearBlock(x);
+    for (final j in joined) {
+      b.clearBlock(j);
+    }
+    final start = [x.start, for (final j in joined) j.start].reduce(math.min);
+    final others = b.blocksInRow(x.row);
+    _resolveRow(b, x.row, others, Block(x.row, start.clamp(0, Board.width - tiles.length), tiles));
+    return b;
   }
 
   /// [tiles] are set down as their own set at column [col] of the row holding [setTile], and

@@ -41,6 +41,11 @@ class TableTuning {
   static const chatTextMs = 3000;
   static const chatEmojiMs = 2000;
   static const chatFadeMs = 400;
+
+  /// The turn-start chime waits for the deal's wash (about 1.9 s) on a round's first turn,
+  /// and comes just after an opponent's draw sound when their draw starts my turn.
+  static const chimeAfterDealMs = 1900;
+  static const chimeAfterDrawMs = 250;
   static const flashMs = 650;
   static const shineMs = 750;
   static const toastMs = 2600;
@@ -108,6 +113,16 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
 
   /// The round each seat's rack was last dealt and sorted for (see [_onSession]).
   final Map<String, int> _dealtRound = {};
+
+  /// The round whose deal sound has played (once per round, even in Pass-and-play).
+  int _washRound = -1;
+
+  /// My turn started and its chime hasn't played yet (it waits for the pass-and-play cover).
+  int? _chimeSeq;
+
+  /// Each player's rack when their turn started (to tell a turn ended by playing tiles).
+  final Map<String, Set<int>> _turnStartRacks = {};
+  int _chimeDelayMs = 0;
 
   /// Bumped when my turn starts, to play the rack pulse.
   int _turnPulseSeq = 0;
@@ -206,6 +221,47 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
 
   List<int> get _order => _rackOrders.putIfAbsent(v?.me ?? '', () => []);
 
+  /// Turn sounds, from this phone's point of view:
+  /// - my turn ends after I played tiles (End turn, a timeout with a valid table, or my last
+  ///   tile): the bell. A turn ended by drawing only plays the draw sound (played elsewhere).
+  /// - my turn starts: the chime, once the pass-and-play cover is gone. After a deal it waits
+  ///   for the wash; after an opponent's draw it comes just after the draw sound.
+  /// Opponents' turns make no sound of their own (only their draws do).
+  void _turnSounds(PlayerView? old, PlayerView nv, bool turnChanged, bool dealtNow) {
+    final drewNow = nv.drawSeq != _drawSeq && nv.drawPlayer != null;
+    if (old != null && old.myTurn && turnChanged && old.round == nv.round) {
+      final iDrew = drewNow && nv.drawPlayer == old.me;
+      final onTable = nv.board.allTiles.toSet();
+      final had = {...?_turnStartRacks[old.me], ...old.rack};
+      if (!iDrew && had.any(onTable.contains)) playSfx(Sfx.turnEnd);
+    }
+    if (nv.myTurn && turnChanged) _turnStartRacks[nv.me] = nv.rack.toSet();
+    if (nv.myTurn && turnChanged && nv.result == null) {
+      _chimeSeq = nv.turnSeq;
+      _chimeDelayMs = dealtNow
+          ? TableTuning.chimeAfterDealMs
+          : (drewNow && nv.drawPlayer != nv.me ? TableTuning.chimeAfterDrawMs : 0);
+      if (s.coverFor != null) _chimeDelayMs = 0; // Played when the next player taps through.
+    }
+    if (_chimeSeq != null && _chimeSeq == nv.turnSeq && nv.myTurn && s.coverFor == null) {
+      _chimeSeq = null;
+      final seq = nv.turnSeq, me = nv.me;
+      void chime() {
+        final cv = v;
+        if (mounted && cv != null && cv.turnSeq == seq && cv.me == me && cv.myTurn) playSfx(Sfx.turnStart);
+      }
+      if (_chimeDelayMs <= 0) {
+        playSfx(Sfx.turnStart);
+      } else {
+        Timer(Duration(milliseconds: _chimeDelayMs), chime);
+      }
+    }
+  }
+
+  /// Tests: puts [b] on my working table (as if placed by hand).
+  @visibleForTesting
+  void debugSetWorking(Board b) => _setWorking(b);
+
   /// Tests: my rack's slots (tiles and blanks).
   @visibleForTesting
   List<int> get debugRackOrder => List.of(_order);
@@ -241,10 +297,15 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     for (final t in fresh) {
       packed = addToRack(packed, t);
     }
+    var dealtNow = false;
     if (nv.round > 0 && nv.result == null && _dealtRound[nv.me] != nv.round) {
       // A fresh deal: sorted 777 then 789, with 789 selected.
       _dealtRound[nv.me] = nv.round;
-      playSfx(Sfx.gameStart);
+      if (_washRound != nv.round) {
+        _washRound = nv.round;
+        playSfx(Sfx.gameStart);
+        dealtNow = true;
+      }
       packed = _sortedEntries(_sortedEntries(packed, false, const {}), true, const {});
       _sortModes[nv.me] = true;
     }
@@ -276,6 +337,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       _turnStartOrder = List.of(order);
       _turnPulseSeq++;
     }
+    _turnSounds(old, nv, turnChanged, dealtNow);
 
     if (!seatChanged && !old.myTurn && old.result == null && nv.result == null && nv.round == old.round) {
       // An opponent took tiles back from the table (or reset, or drew after trying): they fly
@@ -1669,7 +1731,8 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
             compact: true,
             onPressed: my ? _drawOrEnd : null,
             // Drawing plays only the draw sound (no click on top); End turn clicks.
-            sound: !(my && !played),
+            // No click: drawing plays the draw sound and ending a turn the bell (see _turnSounds).
+            sound: false,
           ),
         ]),
       ),

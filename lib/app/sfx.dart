@@ -24,7 +24,13 @@ enum Sfx {
   sort(['sort_A', 'sort_B', 'sort_C']),
 
   /// A round's deal (the start of every round, including the first).
-  gameStart(['start']);
+  gameStart(['start']),
+
+  /// Your turn starts (this phone's player; each person in Pass-and-play).
+  turnStart(['turn_start']),
+
+  /// Your turn ends after playing tiles (a turn ended by drawing plays [draw] instead).
+  turnEnd(['turn_end_bell']);
 
   final List<String> files;
   const Sfx(this.files);

@@ -198,7 +198,7 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
     host.handle('p1', const DrawAction());
     await tester.pump(const Duration(seconds: 2));
-    expect(log, [Sfx.draw, Sfx.draw]);
+    expect(log, [Sfx.draw, Sfx.draw, Sfx.turnStart], reason: "Bob's draw starts my turn: the chime");
     log.clear();
     await tearDownGame(tester);
   });
@@ -274,7 +274,7 @@ void main() {
     host.handle('p1', const DrawAction());
     await tester.pump();
     await tester.pump(const Duration(seconds: 2));
-    expect(log, [Sfx.draw]);
+    expect(log, [Sfx.draw, Sfx.turnStart], reason: 'then my turn starts');
     await tearDownGame(tester);
   });
 
@@ -291,6 +291,83 @@ void main() {
     List<int> norm(List<int> e) => [for (final t in e) isRackGap(t) ? -1 : t];
     expect(norm(order()), norm(keepSetsOnRows(sortRackWithSets(rack, runs: true))), reason: 'packed and sorted 789, no blanks where the set was');
     expect(log, isNot(contains(Sfx.sort)));
+    await tearDownGame(tester);
+  });
+
+  testWidgets('turn sounds: bell after playing, draw only after drawing, chime when my turn starts', (tester) async {
+    SoundBoard.instance.log.clear();
+    await setUpGame(tester, annRack: [y(1), y(2), y(3)]);
+    final log = SoundBoard.instance.log;
+    // The deal's wash, then (after it) my turn's chime.
+    expect(log, [Sfx.gameStart, Sfx.turnStart]);
+    log.clear();
+    // I end my turn after playing a set: only the bell.
+    (tester.state(find.byType(GameScreen)) as dynamic).debugSetWorking(Board.empty()..writeBlock(Block(0, 0, [y(1), y(2), y(3)])));
+    await tester.pump(const Duration(milliseconds: 300));
+    log.clear();
+    await tester.tap(find.text('End turn'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(log, [Sfx.turnEnd]);
+    log.clear();
+    // Bob plays and ends his turn: no sound for his turn end; my turn starts: the chime.
+    final bobSet = [for (var n = 7; n <= 9; n++) makeTile(TileColor.blue, n, copy: 1)];
+    host.racks['p0']!.removeWhere(bobSet.contains);
+    host.pile.removeWhere(bobSet.contains);
+    host.racks['p1']!
+      ..removeWhere(bobSet.contains)
+      ..addAll(bobSet);
+    final b2 = host.board.copy()..writeBlock(Block(2, 0, bobSet));
+    expect(host.handle('p1', CommitAction(b2)).ok, true);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(log.where((x) => x == Sfx.turnEnd), isEmpty);
+    await tester.pump(const Duration(seconds: 1));
+    expect(log.last, Sfx.turnStart);
+    expect(log.where((x) => x == Sfx.turnStart).length, 1);
+    log.clear();
+    // I draw: only the draw sound.
+    await tester.tap(find.text('Draw'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(log, [Sfx.draw]);
+    await tearDownGame(tester);
+  });
+
+  testWidgets('turn sounds: the End turn button rings the bell, no click', (tester) async {
+    await setUpGame(tester, annRack: [y(1), y(2), y(3)]);
+    final log = SoundBoard.instance.log..clear();
+    // Ann's working table holds a valid set (as if placed by hand), then End turn.
+    final st = tester.state(find.byType(GameScreen)) as dynamic;
+    st.debugSetWorking(Board.empty()..writeBlock(Block(0, 0, [y(1), y(2), y(3)])));
+    await tester.pump(const Duration(milliseconds: 300));
+    log.clear();
+    await tester.tap(find.text('End turn'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(log, [Sfx.turnEnd]);
+    await tearDownGame(tester);
+  });
+
+  testWidgets('turn sounds, pass-and-play: the chime plays when the next player taps through the cover', (tester) async {
+    AppPrefs.instance.highlightValid = false;
+    tester.view.physicalSize = const Size(1200, 560);
+    tester.view.devicePixelRatio = 1;
+    host = GameHost(
+      players: const [PlayerInfo('p0', 'Ann', SeatKind.human), PlayerInfo('p1', 'Bob', SeatKind.human)],
+      rules: const HouseRules(turnSeconds: 0, firstMeld: 0),
+      seed: 5,
+    );
+    s = LocalSession(host, hotSeat: true);
+    final log = SoundBoard.instance.log..clear();
+    await tester.pumpWidget(MaterialApp(home: GameScreen(session: s)));
+    await tester.pump(const Duration(seconds: 3));
+    expect(s.coverFor, isNotNull);
+    expect(log, [Sfx.gameStart], reason: 'no chime under the cover');
+    s.dismissCover();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(log, [Sfx.gameStart, Sfx.turnStart]);
     await tearDownGame(tester);
   });
 }

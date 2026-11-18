@@ -9,5 +9,7 @@ All sounds here are CC0 1.0 (public domain dedication); no attribution is requir
 | `start.ogg` | Each round's deal (game start) | Freesound 329098 “Domino pieces hit” by Macif: a two-layer table wash of hits that thins out into a few settling clacks. https://freesound.org/people/Macif/sounds/329098/ | CC0 1.0 |
 | `click.ogg` | Menu buttons | Kenney Casino Audio 1.1, `chips-stack-1.ogg`, light EQ plus a quiet synthesized thud. https://opengameart.org/content/54-casino-sound-effects-cards-dice-chips (Kenney.nl) | CC0 1.0 |
 | `sort_A.ogg`, `sort_B.ogg`, `sort_C.ogg` | Tapping 789 / 777 (one at random) | Four hits from Freesound 329098 “Domino pieces hit” by Macif, layered in a quick burst (even / speeding up / flurry with a final clack). https://freesound.org/people/Macif/sounds/329098/ | CC0 1.0 |
+| `turn_start.ogg` | Your turn starts | Freesound 539915 “Chime” by schreibsel: a two-note glockenspiel chord, pitched up 2 semitones (resampled), 5 dB quieter, trimmed to 0.56 s with a fade. https://freesound.org/people/schreibsel/sounds/539915/ | CC0 1.0 |
+| `turn_end_bell.ogg` | Your turn ends after playing tiles | Freesound 767307 “BELLHand_Ringing Small Hand Bell_HvD_OwSFX” by Hano_van_Dalen: the first ring only. https://freesound.org/people/Hano_van_Dalen/sounds/767307/ | CC0 1.0 |
 
 CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/

@@ -213,4 +213,12 @@ Most numbers live in a small set of constants: `BotTuning` (lib/engine/bot.dart)
       - The add/remove bot and player buttons on the setup screens, and the online lobby's Add bot buttons, use the menu click.
     - **Fixed (v0.1.9 feedback):** each sound's players only played once, so after the third menu click or attach that sound went quiet. Now every play restarts its player properly, quick repeats included. The lobby's X (remove a player or bot) also clicks.
     - **Draw plays one sound:** the Draw button doesn't click, so drawing plays only the draw sound. End turn and the other gold buttons still click.
+    - **Turn sounds:** see #106.
 105. **When does a sort mode sort my rack?** *(New in v0.1.8, your request.)* Besides when tiles come in (#88), the rack is sorted at the end of each of your turns while 789 or 777 is selected. That covers drawing, ending your turn after playing, and running out of time. The blanks your played tiles left behind are packed away. It's silent: the shuffle sound is only for tapping 789 or 777 yourself. In Pass-and-play each player's rack is sorted by their own mode when their turn ends. Bots have no rack on screen, so it doesn't apply to them. Moving a tile by hand still deselects the mode.
+106. **Which sounds mark turns?** *(New after v0.1.9, your picks.)*
+    - **Your turn starts:** a short glockenspiel chime. It plays only for this phone's player. In Pass-and-play, each person gets it when they tap through the "Pass to…" screen, not under it.
+    - **Timing of the chime:** on a round's first turn it waits until the deal's wash has finished (about 1.9 s), so they don't overlap. If you're not first, the chime comes when your turn starts. When an opponent's draw is what starts your turn, the chime comes 0.25 s after the draw sound.
+    - **Your turn ends:** exactly one sound. If you played tiles (End turn, your last tile, or the timer running out with a valid table), a handbell rings. If your turn ended with a draw (Draw, or the timer running out with tiles taken back), only the draw sound plays. The Draw / End turn button no longer clicks.
+    - **Opponents:** their turns starting and ending make no sound; only their draws play the draw sound.
+    - The deal's wash plays once per round, also in Pass-and-play. It used to play again when the second player first saw the round.
+    - All of these follow the Sound switch.

@@ -172,7 +172,14 @@ class _HostLobbyScreenState extends State<HostLobbyScreen> {
                     : null,
                 trailing: s.info.id == 'host'
                     ? null
-                    : IconButton(icon: const Icon(Icons.close, color: MK.gold), onPressed: () => net.removeSeat(s.info.id)),
+                    : IconButton(
+                        key: ValueKey('remove-${s.info.id}'),
+                        icon: const Icon(Icons.close, color: MK.gold),
+                        onPressed: () {
+                          playSfx(Sfx.click);
+                          net.removeSeat(s.info.id);
+                        },
+                      ),
               ),
             Wrap(spacing: 8, children: [
               for (final l in BotLevel.values)

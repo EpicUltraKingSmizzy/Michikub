@@ -94,10 +94,29 @@ class SoundBoard {
     final i = _next[f] ?? 0;
     _next[f] = (i + 1) % list.length;
     final p = list[i];
-    // Not awaited: the platform runs them in order. Stop ends this voice's last play (a no-op
-    // if it finished) so resume starts it again from the top.
-    p.stop().catchError((_) {});
-    p.resume().catchError((_) {});
+    // One restart at a time per voice, so quick repeats aren't lost.
+    _queue[p] = (_queue[p] ?? Future<void>.value()).then((_) => _restart(p));
+  }
+
+  final _queue = <AudioPlayer, Future<void>>{};
+
+  /// Plays a voice again from the top. The stop must finish before the resume: AudioPlayer
+  /// skips a stop when a resume was asked for in the meantime, and the native player, which
+  /// never reports the end of a low-latency sound, then thinks it's still playing and ignores
+  /// the resume. (That's how each voice used to play only once, so sounds died after a few
+  /// clicks.)
+  static Future<void> _restart(AudioPlayer p) async {
+    try {
+      await p.stop();
+      await p.resume();
+    } catch (_) {}
+  }
+
+  /// Tests: use [voices] for [file] instead of loading it.
+  @visibleForTesting
+  void debugSetVoices(String file, List<AudioPlayer> voices) {
+    _players[file] = voices;
+    _next.remove(file);
   }
 }
 

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../app/avatars.dart';
 import '../app/bot_roster.dart';
+import '../app/keep_alive.dart';
 import '../app/session.dart';
 import '../engine/bot.dart';
 import '../engine/host.dart';
@@ -45,12 +46,77 @@ class NetHost extends ChangeNotifier {
     }
   }
 
+  bool _closing = false;
+
+  /// The host's app is in the background without the keep-alive service (iOS, or Android
+  /// refused it): the game is paused and guests see "Host away – game paused".
+  bool away = false;
+
+  void setAway(bool a) {
+    if (a == away || _closing) return;
+    away = a;
+    final msg = jsonEncode({'t': a ? 'away' : 'back'});
+    for (final s in seats) {
+      s.link?.send(msg);
+    }
+    final h = host;
+    if (h != null && h.result == null) {
+      if (a) {
+        h.pauseClock();
+      } else {
+        h.resumeClock();
+      }
+      session?.bots.paused = a;
+    }
+    if (!a) ensureBroker();
+    notifyListeners();
+  }
+
+  /// Back from the background: if the matchmaking connection dropped meanwhile, reopen it
+  /// under the same room code so guests can reconnect.
+  void ensureBroker() {
+    final n = _node;
+    if (_closing || code.isEmpty || n == null || !n.isLost || _reopening) return;
+    _reopenBroker();
+  }
+
+  bool _reopening = false;
+
+  Future<void> _reopenBroker() async {
+    _reopening = true;
+    // The service may still hold the old registration for a little while: keep trying.
+    for (final wait in const [0, 2, 4, 8, 15, 30, 30, 30, 60, 60]) {
+      if (_closing) break;
+      await Future<void>.delayed(Duration(seconds: wait));
+      if (_closing) break;
+      try {
+        final n = await BrokerNode.open('$kPeerPrefix$code');
+        _node = n;
+        _subs.add(n.incoming.listen(_onLink));
+        _watchBroker(n);
+        netLog('room $code reopened');
+        break;
+      } catch (e) {
+        netLog('reopen failed: $e');
+      }
+    }
+    _reopening = false;
+  }
+
+  void _watchBroker(BrokerNode n) {
+    n.lost.then((_) {
+      if (!_closing && identical(n, _node) && !away) _reopenBroker();
+    });
+  }
+
   Future<void> _open() async {
     for (var attempt = 0; attempt < 3; attempt++) {
       code = randomRoomCode();
       try {
         _node = await BrokerNode.open('$kPeerPrefix$code');
         _subs.add(_node!.incoming.listen(_onLink));
+        _watchBroker(_node!);
+        LinkKeepAlive.start('Hosting room $code: keeping your game connected');
         opening = false;
         error = null;
         debugPrint('Michikub room open: $code');
@@ -153,9 +219,15 @@ class NetHost extends ChangeNotifier {
         final name = (m['name'] as String? ?? 'Friend').trim();
         final want = m['seat'] as String?;
         // Rejoin: a dropped player gets their seat back.
-        final back = seats.where((x) => x.link == null && x.info.kind == SeatKind.remote && (x.info.id == want || x.info.name == name)).firstOrNull;
+        // A reconnecting phone names its seat; its old link may not have been noticed as dropped
+        // yet, so the new link replaces it.
+        final back = seats
+            .where((x) => x.info.kind == SeatKind.remote && (x.info.id == want || x.link == null && x.info.name == name))
+            .firstOrNull;
         if (back != null) {
+          final old = back.link;
           back.link = link;
+          if (old != null && old != link) old.close();
           host?.setConnected(back.info.id, true);
           link.send(jsonEncode({'t': 'welcome', 'id': back.info.id}));
           _broadcastLobby();
@@ -235,6 +307,9 @@ class NetHost extends ChangeNotifier {
       s.link?.send(jsonEncode({'t': 'view', 'view': v.toJson()}));
 
   Future<void> shutdown() async {
+    if (_closing) return;
+    _closing = true;
+    LinkKeepAlive.stop();
     for (final s in seats) {
       s.link?.send(jsonEncode({'t': 'bye', 'reason': 'The host closed the game.'}));
       await s.link?.close();
@@ -324,7 +399,56 @@ class NetGuest extends ChangeNotifier {
   final String? avatar;
 
   NetGuest.code(this.myName, this.code, {this.avatar}) {
+    LinkKeepAlive.start('Playing in room $code: keeping your game connected');
     _connectCode();
+  }
+
+  bool _closed = false;
+
+  /// The host said goodbye (or removed us): don't reconnect.
+  bool _ended = false;
+
+  /// The host's app is in the background (and couldn't keep the game running).
+  bool hostAway = false;
+  bool reconnecting = false;
+
+  static const hostAwayText = 'Host away – game paused';
+
+  /// The link dropped: keep trying to get back in (same seat) for a few minutes. Meanwhile the
+  /// table shows "Host away – game paused. Reconnecting…".
+  Future<void> _reconnect() async {
+    if (reconnecting || _closed || _ended) return;
+    reconnecting = true;
+    session?.setStatus('$hostAwayText. Reconnecting…');
+    notifyListeners();
+    final until = DateTime.now().add(const Duration(minutes: 5));
+    while (!_closed && !_ended && DateTime.now().isBefore(until)) {
+      try {
+        if (_node == null || _node!.isLost) {
+          await _node?.close();
+          _node = await BrokerNode.open('$kPeerPrefix${code}_${randomToken(8)}');
+        }
+        final l = await _node!.connect('$kPeerPrefix$code', timeout: const Duration(seconds: 12));
+        if (_closed) {
+          await l.close();
+          break;
+        }
+        reconnecting = false;
+        _attach(l);
+        session?.setStatus(hostAway ? hostAwayText : null);
+        notifyListeners();
+        return;
+      } catch (e) {
+        netLog('reconnect failed: $e');
+        await Future<void>.delayed(const Duration(seconds: 3));
+      }
+    }
+    reconnecting = false;
+    if (!_closed && !_ended) {
+      error ??= 'Lost the connection to the host.';
+      session?.setStatus('Connection lost. Ask the host to keep the game open and rejoin with the same name.');
+      notifyListeners();
+    }
   }
 
   Future<void> _connectCode() async {
@@ -343,9 +467,16 @@ class NetGuest extends ChangeNotifier {
   void _attach(PeerLink l) {
     link = l;
     status = 'Connected. Waiting for the host to start…';
+    _sub?.cancel();
     _sub = l.messages.listen(_onMessage);
     l.send(jsonEncode({'t': 'hello', 'name': myName, 'seat': seatId, 'avatar': avatar}));
     l.closed.then((_) {
+      if (!identical(link, l) || _closed || _ended) return;
+      if (seatId != null) {
+        // We had a seat: try to get back in.
+        _reconnect();
+        return;
+      }
       error ??= 'Lost the connection to the host.';
       session?.setStatus('Connection lost. Ask the host to keep the game open and rejoin with the same name.');
       notifyListeners();
@@ -378,8 +509,15 @@ class NetGuest extends ChangeNotifier {
         final from = m['from'], text = m['text'];
         if (from is String && text is String) session?.showChat(from, text);
       case 'bye':
+        _ended = true;
         error = m['reason'] as String? ?? 'The host ended the game.';
         session?.setStatus(error);
+      case 'away':
+        hostAway = true;
+        session?.setStatus(hostAwayText);
+      case 'back':
+        hostAway = false;
+        session?.setStatus(null);
     }
     notifyListeners();
   }
@@ -394,6 +532,8 @@ class NetGuest extends ChangeNotifier {
   void sendChat(String text) => link?.send(jsonEncode({'t': 'chat', 'text': text}));
 
   void close() {
+    _closed = true;
+    LinkKeepAlive.stop();
     _sub?.cancel();
     link?.close();
     _node?.close();

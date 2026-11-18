@@ -99,8 +99,17 @@ class BrokerNode {
   Future<void> _queue = Future.value();
   final _incoming = StreamController<PeerLink>.broadcast();
   final _errors = StreamController<String>.broadcast();
+  final _lost = Completer<void>();
 
   BrokerNode._(this.id, this._ws);
+
+  /// Completes when the connection to the matchmaking service drops (e.g. the phone slept).
+  /// Open data channels may still work, but no one new can connect until it's reopened.
+  Future<void> get lost => _lost.future;
+  bool get isLost => _lost.isCompleted;
+  void _markLost() {
+    if (!_lost.isCompleted) _lost.complete();
+  }
 
   Stream<PeerLink> get incoming => _incoming.stream;
   Stream<String> get errors => _errors.stream;
@@ -137,9 +146,12 @@ class BrokerNode {
       onError: (e) {
         if (!ready.isCompleted) ready.completeError('Could not reach the matchmaking service.');
         node._errors.add('Matchmaking connection lost.');
+        node._markLost();
       },
       onDone: () {
         if (!ready.isCompleted) ready.completeError('Could not reach the matchmaking service.');
+        node._heartbeat?.cancel();
+        node._markLost();
       },
     );
     await ready.future.timeout(const Duration(seconds: 12),
@@ -261,6 +273,7 @@ class BrokerNode {
 
   Future<void> close() async {
     _heartbeat?.cancel();
+    _markLost();
     try {
       _ws.sink.close();
     } catch (_) {}

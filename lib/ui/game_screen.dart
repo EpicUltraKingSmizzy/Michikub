@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../app/bot_roster.dart';
+import '../app/keep_alive.dart';
 import '../app/prefs.dart';
 import '../app/session.dart';
 import '../engine/board.dart';
@@ -157,6 +158,18 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   /// Online games keep running: other phones are waiting.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    final ss = s;
+    if (ss is NetHostSession) {
+      // Hosting: with the keep-alive service (Android) the game carries on in the background.
+      // Without it (iOS, or refused) it pauses and guests see "Host away – game paused".
+      if (state == AppLifecycleState.resumed) {
+        ss.net.setAway(false);
+        ss.net.ensureBroker();
+      } else if (state == AppLifecycleState.paused && !LinkKeepAlive.active) {
+        ss.net.setAway(true);
+      }
+      return;
+    }
     if (s is! LocalSession) return;
     if (state == AppLifecycleState.resumed) {
       if (_bgPaused) {

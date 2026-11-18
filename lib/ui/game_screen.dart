@@ -288,6 +288,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       _turnSeq = nv.turnSeq;
       working = nv.board.copy();
       _history.clear();
+      _detached.clear();
       _selected.removeWhere((t) => !nv.rack.contains(t));
       _drag = null;
     }
@@ -496,6 +497,51 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
 
   /// Applies a table change. Returns false (and flashes red) if it would put a tile that was
   /// on the table at the start of the turn into the rack; that is never allowed.
+  /// No reattaching: a tile taken out of a set on the table won't be joined back to that set
+  /// by the assists (touching, wrong side, bridging, stranded tiles), only by a drop or tap
+  /// right onto it. Each such tile maps to the tiles left in its set when it came out.
+  final Map<int, Set<int>> _detached = {};
+
+  /// The assists' check for moving [moved] now: tiles [a] may not be joined to set [b] when
+  /// one holds a tile taken out of the set the other holds, earlier this turn ([_detached]) or
+  /// by this very move (a tile now in a set with others, being moved out of it).
+  JoinCheck _joinCheck(List<int> moved) {
+    final ex = {for (final e in _detached.entries) e.key: e.value};
+    final ms = moved.toSet();
+    for (final t in moved) {
+      final blk = working.blockOf(t);
+      final mates = blk?.tiles.where((x) => !ms.contains(x)).toSet() ?? const <int>{};
+      if (mates.isNotEmpty) ex[t] = mates;
+    }
+    bool parted(List<int> p, List<int> q) => p.any((t) => ex[t]?.any(q.contains) ?? false);
+    return (a, b) => !parted(a, b) && !parted(b, a);
+  }
+
+  /// Keeps [_detached] up to date after [moved] went from [before] to [after]:
+  ///  * taken out of a set of several tiles: exempt from that set (its remaining tiles);
+  ///  * moved again while on its own (or with only the tiles it moved with): still exempt;
+  ///  * joined to any set (including, by a direct drop or tap, its old one), or back in the
+  ///    rack: no longer exempt.
+  /// The turn ending or Reset clears it all.
+  void _noteDetached(Board before, Board after, List<int> moved) {
+    final ms = moved.toSet();
+    for (final t in moved) {
+      final from = before.blockOf(t);
+      if (from == null) {
+        _detached.remove(t);
+        continue;
+      }
+      final mates = from.tiles.where((x) => !ms.contains(x)).toSet();
+      if (mates.isNotEmpty) _detached[t] = mates;
+    }
+    final blk = after.blockOf(moved.first);
+    if (blk == null || blk.tiles.any((x) => !ms.contains(x))) _detached.removeWhere((t, _) => ms.contains(t));
+  }
+
+  /// Tests: tiles exempt from rejoining the set they came out of.
+  @visibleForTesting
+  Map<int, Set<int>> get debugDetached => {for (final e in _detached.entries) e.key: {...e.value}};
+
   bool _setWorking(Board b, {List<int>? moved}) {
     final sent = tableTilesSentToRack(_startTiles, b);
     if (sent.isNotEmpty) {
@@ -503,6 +549,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       return false;
     }
     _history.add(working);
+    if (moved != null && moved.isNotEmpty) _noteDetached(working, b, moved);
     working = b;
     if (moved != null && moved.isNotEmpty) {
       // Attached to tiles already there, or set down on its own (a new set).
@@ -737,15 +784,22 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   }
 
   Board _placeAt(List<int> tiles, int row, int col, double frac) {
+    final mayJoin = _joinCheck(tiles);
     final tmp = working.copy()..removeTiles(tiles);
     if (row < tmp.rowCount && tmp.rows[row][col] >= 0) {
       final blk = tmp.blockOf(tmp.rows[row][col])!;
       final idx = (col - blk.start) + (frac > .5 ? 1 : 0);
-      return Layout.bridge(tmp, Layout.dropInto(tmp, tiles, blk.tiles.first, idx, col: col), tiles);
+      return Layout.bridge(tmp, Layout.dropInto(tmp, tiles, blk.tiles.first, idx, col: col), tiles, mayJoin: mayJoin);
     }
     // Dropped right beside a set on the side it doesn't fit: it goes to the end where it does.
-    final beside = row < tmp.rowCount ? Layout.dropBeside(tmp, tiles, row, col) : null;
-    return Layout.bridge(tmp, beside ?? Layout.place(tmp, tiles, row, col), tiles);
+    final beside = row < tmp.rowCount ? Layout.dropBeside(tmp, tiles, row, col, mayJoin: mayJoin) : null;
+    var placed = beside ?? Layout.place(tmp, tiles, row, col);
+    // Touching a set joins it, except the set these tiles were just taken out of.
+    final blk = placed.blockOf(tiles.first);
+    if (blk != null && !mayJoin(tiles, blk.tiles.where((t) => !tiles.contains(t)).toList())) {
+      placed = Layout.place(tmp, tiles, row, col, merge: false);
+    }
+    return Layout.bridge(tmp, placed, tiles, mayJoin: mayJoin);
   }
 
   void _onTap(int t) {
@@ -781,6 +835,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       if (!_tryReclaim(sel, target)) _flashRed(sel, why);
       return;
     }
+    final mayJoin = _joinCheck(sel);
     final tmp = working.copy()..removeTiles(sel);
     final blk = tmp.blockOf(target);
     if (blk == null) return;
@@ -788,7 +843,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     final at = Layout.attachEnd(blk.tiles, sel, blk.tiles.indexOf(target), allowPartial: true);
     if (at != null) {
       _groupSel = false;
-      _setWorking(Layout.bridge(tmp, Layout.insertInto(tmp, sel, blk.tiles.first, at), sel), moved: sel);
+      _setWorking(Layout.bridge(tmp, Layout.insertInto(tmp, sel, blk.tiles.first, at), sel, mayJoin: mayJoin), moved: sel);
       return;
     }
     // No valid end: the joker swap shortcut, then the split for a number the run already has.
@@ -821,8 +876,9 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     if (_groupSel) {
       // A long-press selection lands as a new set at the tapped spot (snap and layout rules apply).
       _groupSel = false;
+      final mayJoin = _joinCheck(sel);
       final tmp = working.copy()..removeTiles(sel);
-      _setWorking(Layout.bridge(tmp, Layout.place(working, sel, c.row, c.col, merge: false), sel), moved: sel);
+      _setWorking(Layout.bridge(tmp, Layout.place(working, sel, c.row, c.col, merge: false), sel, mayJoin: mayJoin), moved: sel);
       return;
     }
     _setWorking(_placeAt(sel, c.row, c.col, 0), moved: sel);
@@ -945,6 +1001,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     if (!_myTurn || v == null) return;
     working = v!.turnStartBoard.copy();
     _history.clear();
+    _detached.clear();
     _selected.clear();
     final rack = v!.rack.toSet();
     var restored = [for (final t in _turnStartOrder) isRackGap(t) || rack.contains(t) ? t : newRackBlank()];

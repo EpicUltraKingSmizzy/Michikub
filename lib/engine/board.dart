@@ -3,6 +3,9 @@ import 'dart:math' as math;
 import 'meld.dart';
 import 'tiles.dart';
 
+/// Whether the tiles [a] may be joined automatically to the set [b] (assists only).
+typedef JoinCheck = bool Function(List<int> a, List<int> b);
+
 /// Tunable layout constants.
 class LayoutTuning {
   /// Spaces per board row, gaps included.
@@ -351,8 +354,8 @@ class Layout {
   /// [board] is the table without [tiles]. Returns null when nothing touches, the touched side
   /// already fits ([place] joins them there), or the other end doesn't fit either. Groups
   /// accept tiles on either side, so [place] already joins them. Only the player's moves use
-  /// this (not bots).
-  static Board? dropBeside(Board board, List<int> tiles, int row, int col) {
+  /// this (not bots). [mayJoin] can veto joining [tiles] to a set (a tile just taken out of it).
+  static Board? dropBeside(Board board, List<int> tiles, int row, int col, {JoinCheck? mayJoin}) {
     if (tiles.isEmpty || row < 0 || row >= board.rowCount) return null;
     final len = tiles.length;
     col = col.clamp(0, Board.width - len);
@@ -367,6 +370,7 @@ class Layout {
       if (nb == null) continue;
       final touched = onRight ? [...nb.tiles, ...tiles] : [...tiles, ...nb.tiles];
       if (isCompatible(touched)) return null; // fits where dropped: place joins it
+      if (mayJoin != null && !mayJoin(tiles, nb.tiles)) continue;
       final end = attachEnd(nb.tiles, tiles, onRight ? nb.length : 0, allowPartial: true);
       if (end == null || end == (onRight ? nb.length : 0)) continue;
       return insertInto(board, tiles, nb.tiles.first, end);
@@ -387,7 +391,8 @@ class Layout {
   ///    group of 4), never just one side.
   /// Sets are never split: a set joins whole or not at all. Splits, middle inserts into runs
   /// and anything else return [post] unchanged. Only the player's moves use this (not bots).
-  static Board bridge(Board pre, Board post, List<int> sel) {
+  /// [mayJoin] can veto a join (a tile just taken out of that set).
+  static Board bridge(Board pre, Board post, List<int> sel, {JoinCheck? mayJoin}) {
     if (sel.isEmpty) return post;
     final x = post.blockOf(sel.first);
     if (x == null) return post;
@@ -431,7 +436,9 @@ class Layout {
       return q;
     }
 
-    final l = live(leftOf), r = live(rightOf);
+    bool ok(Block? q) => q != null && (mayJoin == null || mayJoin(x.tiles, q.tiles));
+    final l0 = live(leftOf), r0 = live(rightOf);
+    final l = ok(l0) ? l0 : null, r = ok(r0) ? r0 : null;
     var tiles = x.tiles;
     final joined = <Block>[];
     if (a.isEmpty) {

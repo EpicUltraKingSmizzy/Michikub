@@ -264,6 +264,22 @@ void main() {
     });
   });
 
+  group('no reattach: the assists can be vetoed for a set', () {
+    bool never(List<int> a, List<int> c) => false;
+
+    test('wrong side: vetoed, the 5 is not moved to the front of the 6', () {
+      final bd = boardOf([Block(0, 10, [b(6)])]);
+      expect(Layout.dropBeside(bd, [b(5)], 0, 11, mayJoin: never), isNull);
+    });
+
+    test('bridging: a vetoed neighbour is not pulled in', () {
+      final pre = boardOf([Block(0, 8, [y(5)]), Block(0, 12, [y(7)])]);
+      final post = Layout.insertInto(pre, [y(6)], y(5), 1);
+      expect(Layout.bridge(pre, post, [y(6)], mayJoin: (a, c) => !c.contains(y(7))).blockOf(y(7))!.tiles, [y(7)]);
+      expect(Layout.bridge(pre, post, [y(6)], mayJoin: (a, c) => true).blockOf(y(7))!.tiles, [y(5), y(6), y(7)]);
+    });
+  });
+
   group('game screen', () {
     late GameHost host;
     late LocalSession s;
@@ -322,6 +338,63 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       expect((st.debugWorking as Board).blockOf(b(6))!.tiles, [b(5), b(6)]);
       await tearDown(tester);
+    });
+
+    group('no reattach (3-4-5-6, the 3 taken out)', () {
+      Future<({dynamic st, double pitch, Rect three})> start(WidgetTester tester) async {
+        final st = await setUp(tester, [y(3), y(4), y(5), y(6), y(2, 1)]);
+        st.debugSetWorking(boardOf([Block(0, 10, [y(3), y(4), y(5), y(6)]), Block(1, 4, [y(2, 1)])]));
+        await tester.pump(const Duration(seconds: 1));
+        final three = tester.getRect(find.byKey(ValueKey(y(3))));
+        final pitch = tester.getRect(find.byKey(ValueKey(y(4)))).left - three.left;
+        return (st: st, pitch: pitch, three: three);
+      }
+
+      Future<void> move(WidgetTester tester, int tile, Offset to) async {
+        await tester.tap(find.byKey(ValueKey(tile)));
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.tapAt(to);
+        await tester.pump(const Duration(milliseconds: 400));
+      }
+
+      testWidgets('dropped just right of 4-5-6, the 3 is not moved back to the front', (tester) async {
+        final g = await start(tester);
+        await move(tester, y(3), g.three.center + Offset(g.pitch * 4, 0)); // column 14, touching the 6
+        final w = g.st.debugWorking as Board;
+        expect(w.blockOf(y(3))!.tiles, [y(3)]);
+        expect(w.blockOf(y(4))!.tiles, [y(4), y(5), y(6)]);
+        expect(g.st.debugDetached, {y(3): {y(4), y(5), y(6)}});
+        await tearDown(tester);
+      });
+
+      testWidgets('set down apart, then dropped touching the 4: it stays apart (user example)', (tester) async {
+        final g = await start(tester);
+        await move(tester, y(3), g.three.center - Offset(g.pitch * 4, 0)); // column 6
+        expect((g.st.debugWorking as Board).blockOf(y(3))!.tiles, [y(3)]);
+        await move(tester, y(3), g.three.center); // column 10, touching the 4
+        final w = g.st.debugWorking as Board;
+        expect(w.blockOf(y(3))!.tiles, [y(3)]);
+        expect(w.blockOf(y(4))!.tiles, [y(4), y(5), y(6)]);
+        await tearDown(tester);
+      });
+
+      testWidgets('tapped right onto 4-5-6, it rejoins, and the exemption ends', (tester) async {
+        final g = await start(tester);
+        await move(tester, y(3), g.three.center - Offset(g.pitch * 4, 0));
+        await move(tester, y(3), tester.getCenter(find.byKey(ValueKey(y(4)))));
+        expect((g.st.debugWorking as Board).blockOf(y(4))!.tiles, [y(3), y(4), y(5), y(6)]);
+        expect(g.st.debugDetached, isEmpty);
+        await tearDown(tester);
+      });
+
+      testWidgets('other sets still take it: dropped just right of a lone 2 it makes 2-3', (tester) async {
+        final g = await start(tester);
+        final two = tester.getRect(find.byKey(ValueKey(y(2, 1))));
+        await move(tester, y(3), two.center + Offset(g.pitch, 0));
+        expect((g.st.debugWorking as Board).blockOf(y(3))!.tiles, [y(2, 1), y(3)]);
+        expect(g.st.debugDetached, isEmpty);
+        await tearDown(tester);
+      });
     });
 
     testWidgets('item 1: an invalid-move message sits above the board, clear of every table tile', (tester) async {

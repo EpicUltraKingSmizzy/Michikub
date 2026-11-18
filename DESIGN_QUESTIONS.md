@@ -243,3 +243,10 @@ Most numbers live in a small set of constants: `BotTuning` (lib/engine/bot.dart)
     - **No room at the other end:** the set slides along the row to make room, the same as attaching by tap. If the tiles fit at neither end, nothing changes: they stay where dropped and the set moves aside.
     - **Bridging (#109):** after the fix, the set can still join a neighbour across a gap. 4 _ 6 + the 5 dropped right of the 6 makes 4-5-6.
     - **Where it applies:** dragging, and tapping an empty cell with tiles selected. A long-pressed piece that you tap onto a spot still lands as its own set. Bots are unaffected.
+111. **No reattaching a tile you just took out of a set** *(New after v0.1.10, your request.)* A tile or piece you take out of a set on the table won't be pulled back into that set by the assists. The assists are: joining a set it touches, the wrong-side fix (#110), bridging, and groups picking up stranded tiles (#109). Take the 3 out of 3-4-5-6 and drop it next to 4-5-6, on either side: it stays a separate tile.
+    - **Telling it's the same set:** the game remembers the tiles left behind when you took the tile out. Any set that holds one of them counts as "that set", even after it gains, loses or moves tiles. It works both ways: dragging 4-5-6 next to that 3 doesn't join them either.
+    - **Other sets still work:** the tile can still be joined to any other set by every assist. The 3 dropped just right of a lone 2 makes 2-3.
+    - **Putting it back on purpose:** dropping or tapping it right onto a tile of its old set still puts it back. That's your move, not an assist, and the exemption ends there.
+    - **How long it lasts:** until the tile joins any set, goes back to your rack, you tap Reset, or the turn ends. Moving it again while it's on its own doesn't end it. Taking it out of another set gives it a new old set.
+    - **It starts with the move itself:** the very drop that takes the tile out is already exempt, so you don't need two moves.
+    - **Bots are unaffected.**

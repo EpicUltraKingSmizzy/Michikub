@@ -79,3 +79,8 @@ test/         engine tests
 
 - **Space Grotesk Bold** (room codes), by Florian Karsten and the Space Grotesk Project Authors. It's from https://github.com/floriankarsten/space-grotesk and licensed under the SIL Open Font License 1.1. The licence text ships in `assets/fonts/SpaceGrotesk-OFL.txt` and is shown in the app under Options > Open-source licences.
 - **Rubik** (body text) and **Playfair** (titles) are bundled in `assets/fonts/`.
+- **Sound effects**: CC0 recordings from Freesound and Kenney.nl. Sources are in `assets/sfx/CREDITS.md`.
+
+## License
+
+Copyright (c) 2026 EpicUltraKingSmizzy. All rights reserved. The source is publicly viewable for reference and so friends can play the web build, but you may not copy, modify, distribute or publish it, or make derivative works, without written permission. To ask, contact [EpicUltraKingSmizzy on GitHub](https://github.com/EpicUltraKingSmizzy). Third-party assets (sounds, fonts) keep their own licenses: see `assets/sfx/CREDITS.md` and Credits above. Full text in [LICENSE](LICENSE).

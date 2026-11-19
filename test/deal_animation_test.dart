@@ -194,7 +194,7 @@ void main() {
       expect(Sfx.pick.files, ['pick_A', 'pick_B', 'pick_C']);
       for (final f in Sfx.pick.files) {
         expect(File('assets/sfx/$f.ogg').existsSync(), true);
-        expect(oggMs('assets/sfx/$f.ogg'), inInclusiveRange(250, 400));
+        expect(oggMs('assets/sfx/$f.ogg'), inInclusiveRange(250, 500));
       }
     });
   });

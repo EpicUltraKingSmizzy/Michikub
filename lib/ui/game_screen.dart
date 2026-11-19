@@ -28,6 +28,10 @@ class TableTuning {
   static const moveMs = 240;
   static const flyMs = 1100;
 
+  /// The draw sound waits for the drawn tile to land in the rack (a hair early, so the
+  /// sound's attack meets the landing).
+  static const drawSoundDelayMs = flyMs - 30;
+
   /// How long the white "new on the table" glow takes to fade in or out.
   static const newGlowFadeMs = 700;
 
@@ -56,7 +60,7 @@ class TableTuning {
   @visibleForTesting
   static bool dealAnimation = true;
   static const dealSpanMs = 1800;
-  static const chimeAfterDrawMs = 250;
+  static const chimeAfterDrawMs = drawSoundDelayMs + 250; // After the opponent's drawn tile lands.
   static const flashMs = 650;
   static const shineMs = 750;
   static const toastMs = 2600;
@@ -401,7 +405,9 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     }
     if (!seatChanged) {
       if (nv.drawSeq != _drawSeq && nv.drawPlayer != null) {
-        playSfx(Sfx.draw);
+        Timer(const Duration(milliseconds: TableTuning.drawSoundDelayMs), () {
+          if (mounted) playSfx(Sfx.draw);
+        });
         if (nv.drawPlayer == nv.me) {
           for (final t in fresh) {
             _spawns[t] = const _Spawn(_Src.pile);

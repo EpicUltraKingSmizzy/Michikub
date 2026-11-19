@@ -329,7 +329,7 @@ void main() {
     // I draw: only the draw sound.
     await tester.tap(find.text('Draw'));
     await tester.pump();
-    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(milliseconds: 1500));
     expect(log, [Sfx.draw]);
     await tearDownGame(tester);
   });

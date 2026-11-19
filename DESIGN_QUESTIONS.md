@@ -318,3 +318,13 @@ Most numbers live in a small set of constants: `BotTuning` (lib/engine/bot.dart)
     - **Saved:** both are saved on the phone as your avatar and name, like on the Join screen.
     - **Sent:** both go to everyone already in the room at once. Their lobbies update, and between rounds the new name or avatar takes effect from the next round.
     - **Empty name:** an empty name isn't sent and goes back to the last one when you finish editing.
+129. **Tile tap when you select a tile** *(New after v0.1.13, your request and your recording.)* Tapping a tile to select it now plays a soft fingernail tap on a real tile (`tile_tap`, tap_04 from your recording).
+    - **When:** a tap (or a long-press on a single tile) that newly selects one tile, on the rack or the table.
+    - **When not:** tapping the selection again to deselect, a long-press that picks up a set (that's the pick burst), and a tap that puts the selection on the table (attach, place or the single tile sound, #130). A tap that can't place the selection (red flash) is silent too.
+    - **Echo:** the room echo was taken out (low cut and a quick fade on the tail). The start is trimmed to 0.6 ms before the click with a 0.25 ms fade-in, so it sounds the moment you tap.
+    - **Level:** it peaks at -9 dBFS, where the other effects peak near -1 dBFS. That keeps it clearly audible on a phone but softer than attach and the menu click, since it plays often. There's no volume setting per sound, so the level is in the file.
+130. **Single tile sound** *(New after v0.1.13, your request and your recording.)* One tile set down alone on the table, in no set, now plays its own tap (`tile_single`, tap_01_raw from your recording, with its natural room sound).
+    - **When:** a tile from the rack put on empty table space, or a tile taken out of a set and put on empty space, by drag or by tap-then-tap.
+    - **When not:** a tile joining a set plays attach; two or more tiles set down together as a new set play place. Splitting a set with a double tap stays silent, as before.
+    - **Start and level:** the same tight start and -9 dBFS peak as the tile tap (#129).
+

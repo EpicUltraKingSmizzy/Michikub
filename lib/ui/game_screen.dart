@@ -654,9 +654,12 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     if (moved != null && moved.isNotEmpty) _noteDetached(working, b, moved);
     working = b;
     if (moved != null && moved.isNotEmpty) {
-      // Attached to tiles already there, or set down on its own (a new set).
+      // Attached to tiles already there, set down as a lone single tile, or set down on its
+      // own as a new set of 2+.
       final blk = b.blockOf(moved.first);
-      playSfx(blk != null && blk.tiles.any((t) => !moved.contains(t)) ? Sfx.attach : Sfx.place);
+      playSfx(blk != null && blk.tiles.any((t) => !moved.contains(t))
+          ? Sfx.attach
+          : (moved.length == 1 && blk != null && blk.tiles.length == 1 ? Sfx.placeSingle : Sfx.place));
     }
     _selected.clear();
     _groupSel = false;
@@ -926,6 +929,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       _groupSel = false;
     });
     _haptic();
+    playSfx(Sfx.select);
   }
 
   /// Tap a tile (or long-press a run/group/set and let go), then tap a set: the tiles join

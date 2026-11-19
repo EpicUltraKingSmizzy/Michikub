@@ -190,8 +190,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     await tester.tapAt(const Offset(600, 180));
     await tester.pump(const Duration(milliseconds: 600));
-    // A tile set down on its own (a new set): the place sound.
-    expect(log, [Sfx.place]);
+    // Tapping the tile selects it (the tile tap); set down on its own, a lone tile: the single
+    // tile sound.
+    expect(log, [Sfx.select, Sfx.placeSingle]);
     log.clear();
     // Opponent and own draws: the draw sound, and the automatic sort is silent.
     host.handle('p0', const DrawAction());

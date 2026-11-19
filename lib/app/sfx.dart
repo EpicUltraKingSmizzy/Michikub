@@ -18,8 +18,18 @@ enum Sfx {
   /// sound is still being chosen: until then it's the attach sound. Swap the file name here.
   place(['attach']),
 
+  /// One tile set down on the table on its own, not part of any set: from the rack onto empty
+  /// table space, or taken out of a set to empty space. (A lone tap of a tile on real tiles,
+  /// recorded by the developer.)
+  placeSingle(['tile_single']),
+
   /// Menu buttons.
   click(['click']),
+
+  /// Tapping a tile to select it (one tile, freshly selected). Not when deselecting, not for a
+  /// long-press pick-up of a set ([pick]), and not when the tap places the selection. (A
+  /// fingernail tap on a real tile, recorded by the developer.)
+  select(['tile_tap']),
 
   /// Tapping 789 / 777 by hand (not the automatic sorts): one of three bursts at random.
   sort(['sort_A', 'sort_B', 'sort_C']),

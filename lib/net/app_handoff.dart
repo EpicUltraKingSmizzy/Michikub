@@ -1,5 +1,10 @@
-/// Opening a web join link (`…/Michikub/?join=ABCD`, from a QR code or a shared invite) in
-/// the Android app when it's installed.
+/// Opening a web join link (`https://playmichikub.github.io/?join=ABCD`, from a QR code or a
+/// shared invite) in the Android app when it's installed.
+///
+/// First choice: Android App Links. The app claims https://playmichikub.github.io/ (intent filter
+/// with autoVerify in AndroidManifest.xml, proven by /.well-known/assetlinks.json on the site),
+/// so Android opens such links in the app without a browser. Where that doesn't happen (the
+/// link is opened from inside a browser, verification hasn't run yet), the fallback below.
 ///
 /// The automatic attempt happens in web/index.html, before the game loads: an Android browser
 /// is sent to [androidIntentUrl]. With the app installed, Android opens it on Join a game

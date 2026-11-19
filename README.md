@@ -39,7 +39,7 @@ All play, solo modes included, goes through the same rules engine (`lib/engine/`
 
 ## Play in a browser
 
-The web version runs at https://epicultrakingsmizzy.github.io/Michikub/ (any phone, iPhone included, or a computer). It's served by GitHub Pages from the `gh-pages` branch, which holds only the built files. To publish the current code, run `tool/deploy_web.sh` (it builds the web version and replaces `gh-pages`). An invite's browser link (`…/Michikub/?join=CODE`) opens Join with the room code filled in.
+The web version runs at https://playmichikub.github.io/ (any phone, iPhone included, or a computer). It's served by GitHub Pages from the [PlayMichikub/PlayMichikub.github.io](https://github.com/PlayMichikub/PlayMichikub.github.io) repository, which holds only the built files; the source stays here. To publish the current code, run `tool/deploy_web.sh` (it builds the web version and replaces that repository's `main` branch). An invite link (`https://playmichikub.github.io/?join=CODE`, also shown as a QR code when you host) opens Join with the room code filled in, in the Android app when it's installed and otherwise in the browser. The old address, https://epicultrakingsmizzy.github.io/Michikub/, forwards there (`tool/deploy_old_site_redirect.sh`), so old invites keep working.
 
 ## Install on Android
 

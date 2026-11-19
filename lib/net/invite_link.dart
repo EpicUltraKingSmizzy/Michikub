@@ -5,9 +5,12 @@ library;
 String joinLink(String code) => 'michikub://join/${code.trim().toUpperCase()}';
 
 /// Where the web version is hosted (GitHub Pages).
-const kWebAppUrl = 'https://epicultrakingsmizzy.github.io/Michikub/';
+const kWebAppUrl = 'https://playmichikub.github.io/';
 
-/// The web version's join link, e.g. `https://epicultrakingsmizzy.github.io/Michikub/?join=ABCD`:
+/// Where it used to be; that address now forwards here, and its old join links still work.
+const kOldWebAppUrl = 'https://epicultrakingsmizzy.github.io/Michikub/';
+
+/// The web version's join link, e.g. `https://playmichikub.github.io/?join=ABCD`:
 /// opens the game in a browser (any phone, iPhone included) with Join filled in.
 String webJoinLink(String code) => '$kWebAppUrl?join=${code.trim().toUpperCase()}';
 
@@ -15,7 +18,7 @@ String webJoinLink(String code) => '$kWebAppUrl?join=${code.trim().toUpperCase()
 /// on Android it hands off to the app when it's installed, see app_handoff.dart):
 ///
 ///     Come play Michikub with me! Code ABCD
-///     https://epicultrakingsmizzy.github.io/Michikub/?join=ABCD
+///     https://playmichikub.github.io/?join=ABCD
 String inviteShareText(String code) {
   final c = code.trim().toUpperCase();
   return 'Come play Michikub with me! Code $c\n${webJoinLink(c)}';

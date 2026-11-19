@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -19,7 +20,7 @@ void main() {
       expect(url, startsWith('intent://join/ABCD#Intent;scheme=michikub;package=com.michikub.michikub;'));
       expect(url, endsWith(';end'));
       final fb = Uri.decodeComponent(RegExp(r'S\.browser_fallback_url=([^;]+)').firstMatch(url)!.group(1)!);
-      expect(fb, 'https://epicultrakingsmizzy.github.io/Michikub/?join=ABCD&web=1');
+      expect(fb, 'https://playmichikub.github.io/?join=ABCD&web=1');
       expect(codeFromAppLink(Uri.parse(fb)), 'ABCD', reason: 'the fallback still joins the room');
     });
 
@@ -46,6 +47,19 @@ void main() {
       expect(File('android/app/build.gradle.kts').readAsStringSync(), contains('applicationId = "$kAndroidPackage"'));
     });
 
+    test('App Links: the manifest claims playmichikub.github.io with autoVerify, and assetlinks.json names the app', () {
+      final manifest = File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
+      expect(manifest, contains('<intent-filter android:autoVerify="true">'));
+      expect(manifest, contains('android:scheme="https" android:host="playmichikub.github.io" android:path="/"'));
+      expect(Uri.parse(webJoinLink('ABCD')).host, 'playmichikub.github.io');
+      expect(Uri.parse(webJoinLink('ABCD')).path, '/');
+      final links = jsonDecode(File('web/.well-known/assetlinks.json').readAsStringSync()) as List;
+      final target = (links.single as Map)['target'] as Map;
+      expect(target['package_name'], kAndroidPackage);
+      expect((target['sha256_cert_fingerprints'] as List).single, matches(RegExp(r'^([0-9A-F]{2}:){31}[0-9A-F]{2}$')));
+      expect(File('tool/deploy_web.sh').readAsStringSync(), contains('.well-known/assetlinks.json'));
+    });
+
     testWidgets('Join screen: "Open in the app" when offered, not otherwise', (tester) async {
       await tester.pumpWidget(const MaterialApp(home: JoinScreen(initialCode: 'ABCD', offerApp: true)));
       expect(find.byKey(const ValueKey('openInApp')), findsOneWidget);
@@ -59,7 +73,7 @@ void main() {
     test('encodes the web join link', () {
       final v = QrValidator.validate(data: webJoinLink('abcd'), version: QrVersions.auto, errorCorrectionLevel: QrErrorCorrectLevel.L);
       expect(v.isValid, true);
-      expect(webJoinLink('abcd'), 'https://epicultrakingsmizzy.github.io/Michikub/?join=ABCD');
+      expect(webJoinLink('abcd'), 'https://playmichikub.github.io/?join=ABCD');
     });
 
     testWidgets('dark on white, a scannable size', (tester) async {

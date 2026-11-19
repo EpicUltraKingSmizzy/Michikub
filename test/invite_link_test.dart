@@ -4,8 +4,8 @@ import 'package:michikub/net/peer.dart';
 
 void main() {
   test('share text: two lines, the invitation with the code, then the web link (no michikub:// line)', () {
-    expect(inviteShareText('ABCD'), 'Come play Michikub with me! Code ABCD\nhttps://epicultrakingsmizzy.github.io/Michikub/?join=ABCD');
-    expect(inviteShareText(' ktmqzp '), 'Come play Michikub with me! Code KTMQZP\nhttps://epicultrakingsmizzy.github.io/Michikub/?join=KTMQZP');
+    expect(inviteShareText('ABCD'), 'Come play Michikub with me! Code ABCD\nhttps://playmichikub.github.io/?join=ABCD');
+    expect(inviteShareText(' ktmqzp '), 'Come play Michikub with me! Code KTMQZP\nhttps://playmichikub.github.io/?join=KTMQZP');
     expect(inviteShareText('ABCD'), isNot(contains('michikub://')));
     expect(codeFromJoinLink(inviteShareText('wxyz')), 'WXYZ', reason: 'pasting the whole invite into Join keeps the code');
   });
@@ -34,7 +34,10 @@ void main() {
     expect(codeFromAppLink(Uri.parse('https://epicultrakingsmizzy.github.io/Michikub/?join=ktmqzp')), 'KTMQZP');
     expect(codeFromAppLink(Uri.parse('https://epicultrakingsmizzy.github.io/Michikub/?join=AB12')), isNull);
     expect(codeFromAppLink(Uri.parse('https://epicultrakingsmizzy.github.io/Michikub/')), isNull);
-    expect(codeFromJoinLink('https://epicultrakingsmizzy.github.io/Michikub/?join=xytz'), 'XYTZ');
+    expect(codeFromJoinLink('https://epicultrakingsmizzy.github.io/Michikub/?join=xytz'), 'XYTZ', reason: 'old links still work');
+    expect(codeFromAppLink(Uri.parse('https://playmichikub.github.io/?join=ktmqzp')), 'KTMQZP');
+    expect(codeFromJoinLink('https://playmichikub.github.io/?join=xytz'), 'XYTZ');
+    expect(codeFromAppLink(Uri.parse('https://playmichikub.github.io/')), isNull, reason: 'the home page opens the app at home');
   });
 
   test('room codes are 6 letters, no digits or look-alikes (v0.1.8)', () {

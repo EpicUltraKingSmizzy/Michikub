@@ -40,6 +40,16 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="michikub" android:host="join"/>
             </intent-filter>
+            <!-- Android App Links: https://playmichikub.github.io/?join=ABCD (QR codes, shared invites)
+                 opens the app directly. Verified by https://playmichikub.github.io/.well-known/assetlinks.json
+                 (web/.well-known/assetlinks.json: the app id and the signing key's SHA-256). Only the
+                 site's root page ("/"); the web game's other files stay in the browser. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="playmichikub.github.io" android:path="/"/>
+            </intent-filter>
         </activity>
         <service
             android:name=".GameLinkService"

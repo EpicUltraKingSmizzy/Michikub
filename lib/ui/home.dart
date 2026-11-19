@@ -1,17 +1,24 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
+import '../app/fullscreen.dart';
+import 'fullscreen_button.dart';
+
 import 'online_screens.dart';
 import 'options_screen.dart';
 import 'setup_screens.dart';
 import 'theme.dart';
 
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key, this.fitToScreen = kIsWeb});
+  const HomeScreen({super.key, this.fitToScreen = kIsWeb, this.showFullscreen});
 
   /// Web only (by default): the menu scales down to fit the window. A phone browser in
   /// landscape loses height to its address bar. The apps keep the original layout.
   final bool fitToScreen;
+
+  /// The browser full screen button in the top-right corner (web, where the browser offers
+  /// full screen; null = ask the browser).
+  final bool? showFullscreen;
 
   @override
   Widget build(BuildContext context) {
@@ -45,10 +52,14 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ),
               );
-              if (box.maxHeight >= _minFitHeight) return fitted;
-              return SingleChildScrollView(
-                child: SizedBox(height: _minFitHeight, width: box.maxWidth, child: fitted),
-              );
+              final body = box.maxHeight >= _minFitHeight
+                  ? fitted
+                  : SingleChildScrollView(child: SizedBox(height: _minFitHeight, width: box.maxWidth, child: fitted));
+              if (!(showFullscreen ?? Fullscreen.supported)) return body;
+              return Stack(children: [
+                Positioned.fill(child: body),
+                const Positioned(top: 6, right: 6, child: FullscreenButton()),
+              ]);
             },
           ),
         ),

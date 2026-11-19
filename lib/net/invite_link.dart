@@ -11,15 +11,14 @@ const kWebAppUrl = 'https://epicultrakingsmizzy.github.io/Michikub/';
 /// opens the game in a browser (any phone, iPhone included) with Join filled in.
 String webJoinLink(String code) => '$kWebAppUrl?join=${code.trim().toUpperCase()}';
 
-/// The message shared with friends:
+/// The message shared with friends, two lines (messaging apps make the web link tappable;
+/// on Android it hands off to the app when it's installed, see app_handoff.dart):
 ///
-///     Come play Michikub with me!
-///     Room code: ABCD
-///     Play in your browser: https://epicultrakingsmizzy.github.io/Michikub/?join=ABCD
-///     Android app: michikub://join/ABCD
+///     Come play Michikub with me! Code ABCD
+///     https://epicultrakingsmizzy.github.io/Michikub/?join=ABCD
 String inviteShareText(String code) {
   final c = code.trim().toUpperCase();
-  return 'Come play Michikub with me!\nRoom code: $c\nPlay in your browser: ${webJoinLink(c)}\nAndroid app: ${joinLink(c)}';
+  return 'Come play Michikub with me! Code $c\n${webJoinLink(c)}';
 }
 
 /// The room code from a link that opened the app (`michikub://join/ABCD`), or null when the

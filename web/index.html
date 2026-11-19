@@ -36,11 +36,31 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Michikub">
-  <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png?v=0.1.11">
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png?v=0.1.12">
 
   <!-- Favicon -->
-  <link rel="icon" type="image/png" sizes="32x32" href="favicon.png?v=0.1.11"/>
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon.png?v=0.1.12"/>
   <meta name="theme-color" content="#2A0E07">
+
+
+  <!--
+    Join links (?join=ABCD, from a QR code or a shared invite) open the Android app when it's
+    installed: an Android browser is sent to an intent link before the game loads. Without the
+    app, the browser follows the fallback, the same link plus web=1, which stays on the web (no
+    loop). See lib/net/app_handoff.dart (kept in step with it by test/app_handoff_test.dart).
+  -->
+  <script>
+    (function () {
+      try {
+        var q = new URLSearchParams(location.search);
+        var code = (q.get('join') || '').toUpperCase();
+        if (!/^[A-Z]{4,8}$/.test(code) || q.has('web') || !/Android/i.test(navigator.userAgent)) return;
+        var fallback = location.origin + location.pathname + '?join=' + code + '&web=1';
+        location.replace('intent://join/' + code + '#Intent;scheme=michikub;package=com.michikub.michikub;' +
+          'S.browser_fallback_url=' + encodeURIComponent(fallback) + ';end');
+      } catch (e) {}
+    })();
+  </script>
 
   <title>Michikub</title>
   <link rel="manifest" href="manifest.json">

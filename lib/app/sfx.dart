@@ -4,6 +4,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 
 import 'prefs.dart';
+import 'web_audio_stub.dart' if (dart.library.js_interop) 'web_audio_web.dart';
 
 /// The game's sound effects (assets/sfx, see CREDITS.md there).
 enum Sfx {
@@ -59,7 +60,19 @@ class SoundBoard {
   @visibleForTesting
   final List<Sfx> log = [];
 
+  /// The web build plays through [WebAudio] (Web Audio, .ogg or .m4a per browser).
+  bool _web = false;
+
   Future<void> init() async {
+    if (kIsWeb && WebAudio.available) {
+      try {
+        await WebAudio.init({for (final s in Sfx.values) ...s.files});
+        _web = true;
+        return;
+      } catch (e) {
+        debugPrint('web audio: $e'); // Falls back to audioplayers.
+      }
+    }
     try {
       // Game sounds mix with the user's music and don't take audio focus. On iPhone, "ambient"
       // follows the silent switch; Android has no silent switch for app sounds, so the media
@@ -99,6 +112,10 @@ class SoundBoard {
     log.add(s);
     if (!AppPrefs.instance.sound || s.files.isEmpty) return;
     final f = s.files[_rng.nextInt(s.files.length)];
+    if (_web) {
+      WebAudio.play(f);
+      return;
+    }
     final list = _players[f];
     if (list == null || list.isEmpty) return;
     final i = _next[f] ?? 0;

@@ -35,6 +35,13 @@ class TableGeo {
   late final Offset boardOrigin;
   late final Rect pileRect;
   late final Rect makeSpaceRect;
+
+  /// The corner buttons, all the size of the 777/789 sort buttons ([cornerBtn]): Menu in the
+  /// top-left corner, the Round (scores) button just left of the pile, Reset in the
+  /// bottom-right corner; and the Draw / End turn button, stretched from the rack to Reset.
+  late final Rect menuRect, roundRect, resetRect, drawRect;
+  static const cornerBtn = 46.0;
+  static const drawH = 40.0;
   late final double shownCols;
 
   /// The whole columns in view: [firstCol]..[lastCol], centred on the board's middle (where
@@ -72,7 +79,7 @@ class TableGeo {
         viewCols = (viewCols ?? minViewCols).clamp(minViewCols, rowWidth.toDouble()) {
     final rackCount = math.max(1, rackEntries.length);
     final w = size.width, h = size.height;
-    topH = (h * .12).clamp(42.0, 66.0);
+    topH = (h * .12).clamp(cornerBtn + 6, 66.0); // Room for the Menu and Round buttons.
     // Side seat columns: just wide enough for an avatar, its count badge and two columns of backs.
     sideW = sideWFor(w);
     ctrlW = (w * .21).clamp(150.0, 250.0);
@@ -129,6 +136,11 @@ class TableGeo {
     final pw = (h * .06).clamp(22.0, 34.0);
     // The pile sits in the top-right corner, clear of the side seats.
     pileRect = Rect.fromLTWH(w - pw - 62, 6, pw, pw * 1.38);
+    menuRect = const Rect.fromLTWH(6, 3, cornerBtn, cornerBtn);
+    roundRect = Rect.fromLTWH(pileRect.left - 8 - cornerBtn, 3, cornerBtn, cornerBtn);
+    resetRect = Rect.fromLTWH(w - 10 - cornerBtn, h - 10 - cornerBtn, cornerBtn, cornerBtn);
+    final drawLeft = rackRect.right + 8;
+    drawRect = Rect.fromLTRB(drawLeft, resetRect.center.dy - drawH / 2, math.max(drawLeft + 60, resetRect.left - 8), resetRect.center.dy + drawH / 2);
   }
 
   /// Width of the side seat columns for a screen [w] wide.
@@ -179,7 +191,8 @@ class TableGeo {
     final w = size.width;
     switch (s) {
       case SeatPos.left:
-        return Offset(sideW / 2, topH + avatar / 2 - 4);
+        // Below the Menu button in the top-left corner (the count badge pokes 6 px above).
+        return Offset(sideW / 2, math.max(topH + avatar / 2 - 4, menuRect.bottom + 4 + 6 + avatar / 2));
       case SeatPos.right:
         // A few pixels lower than the left seat, and always below the pile and its count
         // (the count badge pokes 6 px above the avatar).

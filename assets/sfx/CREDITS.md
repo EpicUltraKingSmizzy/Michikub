@@ -14,3 +14,6 @@ All sounds here are CC0 1.0 (public domain dedication); no attribution is requir
 | `pick_A.ogg`, `pick_B.ogg`, `pick_C.ogg` | Long-press picking up a set of 3+ tiles (one at random) | Kenney Casino Audio 1.1, `chips-collide-1.ogg` (the attach hit), repeated in a quick burst: four even hits / four speeding up with a little pitch wander / a flurry of three and a heavier final clack. Built by `/workspace/michikub-sfx/mahjong/build_pick.py` (previews `shuffle_burstC_A/B/C`). https://opengameart.org/content/54-casino-sound-effects-cards-dice-chips (Kenney.nl) | CC0 1.0 |
 
 CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/
+
+Each sound also has an `.m4a` (AAC) copy, made from the `.ogg` with ffmpeg, for iPhone and iPad
+browsers (Safari's engine doesn't play Ogg). Same sources and licences.

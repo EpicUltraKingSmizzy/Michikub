@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../app/bot_roster.dart';
+import '../app/fullscreen.dart';
 import '../app/keep_alive.dart';
 import '../app/sfx.dart';
 import '../app/prefs.dart';
@@ -309,6 +310,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       return;
     }
     final old = v;
+    if (nv.result != null) _roundScores[nv.round] = Map.of(nv.result!.roundScores);
     final seatChanged = old == null || nv.me != old.me;
     // Every tile this phone could already see, so only truly new tiles fly in.
     final seen = <int>{
@@ -1175,6 +1177,17 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                 Text(v?.rules.summary() ?? '', style: MK.body(12, color: MK.gold), textAlign: TextAlign.center),
                 const SizedBox(height: 12),
                 GoldButton('Resume', icon: Icons.play_arrow, onPressed: () => Navigator.pop(ctx)),
+                if (Fullscreen.supported) ...[
+                  const SizedBox(height: 10),
+                  ValueListenableBuilder<bool>(
+                    valueListenable: Fullscreen.active,
+                    builder: (_, on, _) => GoldButton(on ? 'Exit full screen' : 'Full screen',
+                        key: const ValueKey('menuFullscreen'),
+                        icon: on ? Icons.fullscreen_exit : Icons.fullscreen,
+                        crimson: true,
+                        onPressed: Fullscreen.toggle),
+                  ),
+                ],
                 if (s.testMenu && host != null && me != null) ...[
                   const SizedBox(height: 14),
                   Text('Test tools', style: MK.body(14, color: MK.goldLight, weight: FontWeight.w700), textAlign: TextAlign.center),
@@ -1288,7 +1301,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                   ..._rackFrame(g, rack.length),
                   if (_turnPulseSeq > 0) _turnPulse(g),
                   ..._seats(g, pv),
-                  _brand(g),
+                  ..._cornerButtons(g),
                   ..._myCorner(g, pv),
                   _pile(g, pv),
                   ..._controls(g, pv),
@@ -1326,6 +1339,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                     ),
                   // Pass-and-play: the drawn tiles are on show; the turn is over, so no input.
                   if (s.revealTiles.isNotEmpty) const Positioned.fill(child: AbsorbPointer()),
+                  if (_scoresOpen && s.coverFor == null) _scoresOverlay(pv),
                   if (s.coverFor != null) Positioned.fill(child: _cover(s.coverFor!)),
                 ],
               );
@@ -1809,13 +1823,94 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     return h;
   }
 
-  Widget _brand(TableGeo g) => Positioned(
-        left: 8,
-        top: 6,
-        child: Row(children: [
-          Text('Round ${v!.round}', style: MK.body(11, color: MK.gold)),
-        ]),
-      );
+  /// Menu (top-left corner) and the Round button (left of the pile, opens the scores), the
+  /// size of the 777/789 sort buttons.
+  List<Widget> _cornerButtons(TableGeo g) => [
+        Positioned.fromRect(
+          rect: g.menuRect,
+          child: Tooltip(
+            message: 'Menu',
+            child: RingButton(key: const ValueKey('menuButton'), size: TableGeo.cornerBtn, icon: Icons.menu, onPressed: _openMenu),
+          ),
+        ),
+        Positioned.fromRect(
+          rect: g.roundRect,
+          child: Tooltip(
+            message: 'Scores',
+            child: RingButton(
+              key: const ValueKey('roundButton'),
+              size: TableGeo.cornerBtn,
+              selected: _scoresOpen,
+              onPressed: () => setState(() => _scoresOpen = !_scoresOpen),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Text('ROUND', style: MK.body(7.5, color: _scoresOpen ? Colors.black : MK.gold, weight: FontWeight.w700).copyWith(height: 1.0)),
+                Text('${v!.round}', style: MK.body(17, color: _scoresOpen ? Colors.black : MK.goldLight, weight: FontWeight.w800).copyWith(height: 1.05)),
+              ]),
+            ),
+          ),
+        ),
+      ];
+
+  /// The scores overlay (from the Round button): each player's score per round (rounds seen
+  /// on this device) and running total. A tap anywhere closes it.
+  bool _scoresOpen = false;
+  final Map<int, Map<String, int>> _roundScores = {};
+
+  Widget _scoresOverlay(PlayerView pv) {
+    final rounds = (_roundScores.keys.toList()..sort());
+    final shown = rounds.length > 6 ? rounds.sublist(rounds.length - 6) : rounds;
+    final rows = [...pv.seats]..sort((a, b) => b.total - a.total);
+    Widget cell(String t, {bool head = false, bool right = true, Color? color}) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+          child: Text(t,
+              textAlign: right ? TextAlign.right : TextAlign.left,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: head ? MK.body(11, color: MK.gold, weight: FontWeight.w700) : MK.body(14, weight: FontWeight.w700, color: color ?? MK.creamText)),
+        );
+    return Positioned.fill(
+      child: GestureDetector(
+        key: const ValueKey('scoresOverlay'),
+        behavior: HitTestBehavior.opaque,
+        onTap: () => setState(() => _scoresOpen = false),
+        child: Container(
+          color: const Color(0x990B0705),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.all(12),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: MkPanel(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: SingleChildScrollView(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Text('Scores after ${pv.result != null ? 'round ${pv.round}' : '${pv.round - 1} round${pv.round == 2 ? '' : 's'}'}',
+                      style: MK.title(20)),
+                  const SizedBox(height: 8),
+                  Table(
+                    columnWidths: {0: const FlexColumnWidth(3), for (var i = 1; i <= shown.length + 1; i++) i: const FlexColumnWidth(1.3)},
+                    defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                    children: [
+                      TableRow(children: [cell('Player', head: true, right: false), for (final r in shown) cell('R$r', head: true), cell('Total', head: true)]),
+                      for (final s in rows)
+                        TableRow(children: [
+                          cell(s.info.name + (s.info.id == pv.me ? ' (you)' : ''), right: false),
+                          for (final r in shown) cell(_signedScore(_roundScores[r]![s.info.id])),
+                          cell('${s.total}', color: MK.goldLight),
+                        ]),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text('Tap anywhere to close', style: MK.body(11, color: MK.gold)),
+                ]),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  static String _signedScore(int? n) => n == null ? '–' : (n > 0 ? '+$n' : '$n');
 
   List<Widget> _myCorner(TableGeo g, PlayerView pv) {
     final me = pv.mySeat;
@@ -1883,29 +1978,32 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   List<Widget> _controls(TableGeo g, PlayerView pv) {
     final my = pv.myTurn;
     final played = _playedThisTurn.isNotEmpty;
-    final bs = (g.size.height * .11).clamp(36.0, 46.0);
     return [
-      Positioned(
-        right: 10,
-        bottom: 10,
-        width: g.ctrlW - 16,
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-            RingButton(size: bs, icon: Icons.restart_alt, caption: 'RESET', onPressed: _canReset ? _resetTurn : null),
-            const SizedBox(width: 10),
-            RingButton(size: bs, icon: Icons.menu, caption: 'MENU', onPressed: _openMenu),
-          ]),
-          const SizedBox(height: 8),
-          GoldButton(
+      // Reset in the bottom-right corner; Draw / End turn stretched from the rack to it.
+      Positioned.fromRect(
+        rect: g.resetRect,
+        child: Tooltip(
+          message: 'Reset: take back this turn',
+          child: RingButton(
+              key: const ValueKey('resetButton'),
+              size: TableGeo.cornerBtn,
+              icon: Icons.restart_alt,
+              caption: 'RESET',
+              onPressed: _canReset ? _resetTurn : null),
+        ),
+      ),
+      Positioned.fromRect(
+        rect: g.drawRect,
+        child: GoldButton(
             my ? (played ? 'End turn' : (pv.pile > 0 ? 'Draw' : 'Pass')) : 'Waiting...',
-            icon: my ? (played ? Icons.check_circle_outline : Icons.add_box_outlined) : Icons.hourglass_empty,
+            // Narrow phones (under 115 px between the rack and Reset): the label alone.
+            icon: g.drawRect.width < 115 ? null : (my ? (played ? Icons.check_circle_outline : Icons.add_box_outlined) : Icons.hourglass_empty),
             compact: true,
             onPressed: my ? _drawOrEnd : null,
-            // Drawing plays only the draw sound (no click on top); End turn clicks.
             // No click: drawing plays the draw sound and ending a turn the bell (see _turnSounds).
             sound: false,
+            key: const ValueKey('drawButton'),
           ),
-        ]),
       ),
     ];
   }
@@ -2022,8 +2120,9 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   /// A long message wraps upward.
   Widget _toastWidget(TableGeo g) => Positioned(
         bottom: g.size.height - math.min(g.boardRect.top, g.boardOrigin.dy) + 2,
-        left: g.boardRect.left,
-        right: g.boardRect.right > 0 ? g.size.width - g.boardRect.right : 0,
+        // Centred, clear of the Round button (left of the pile) and the Menu button.
+        left: math.max(g.boardRect.left, g.size.width - g.roundRect.left + 6),
+        right: math.max(g.boardRect.left, g.size.width - g.roundRect.left + 6),
         child: IgnorePointer(
           child: Center(
             child: Container(

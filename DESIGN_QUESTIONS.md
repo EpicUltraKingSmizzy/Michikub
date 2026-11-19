@@ -263,3 +263,33 @@ Most numbers live in a small set of constants: `BotTuning` (lib/engine/bot.dart)
 115. **Draw sound timing** *(New after v0.1.11, your request.)* The draw sound plays as the drawn tile lands in the rack, not when it leaves the pile. That's about 1.07 s after the draw, just before the 1.1 s flight ends, so the sound's attack meets the landing. It applies to your draws and opponents'.
     - **Your turn chime:** when an opponent's draw hands you the turn, the chime now waits until 250 ms after their tile lands, so you still hear the draw, then the chime.
     - **Tuning:** `TableTuning.drawSoundDelayMs`, if it feels early or late on a phone.
+116. **Full screen in the browser** *(New after v0.1.11, your request.)* The web version has a full screen button: a gold ring with the full screen icon in the top-right corner of the home screen, and a "Full screen" / "Exit full screen" button in the in-game Menu. It uses the browser's Fullscreen API, which hides the address bar and tabs until you leave (the button again, Esc, or swiping down on Android).
+    - **iPhone:** Safari on iPhone doesn't let web pages go full screen, and every iPhone browser (Chrome too) is Safari underneath, so the button is hidden there. On an iPhone, the way to lose the browser bars is Share > Add to Home Screen. The web manifest now asks for full screen (falling back to standalone) and landscape, so the home-screen icon opens without the bars. iPads get the button if their Safari supports it.
+    - **Apps:** no button; the Android app is already full screen, and its home screen is unchanged.
+117. **Timeout bell** *(New after v0.1.11, your request.)* When your time runs out with a valid table and at least one tile played, the tiles stay (as before) and the successful-turn bell rings, as if you'd tapped End turn. If the timeout takes your tiles back and draws, you hear the draw sound only, as before. The same applies in Pass-and-play.
+118. **New table layout** *(New after v0.1.11, your request.)* The corner buttons are now all the size of the 777/789 sort buttons:
+    - **Menu:** in the top-left corner. With 3-4 players, the left opponent moves down just below it.
+    - **Round:** the round counter is now a button ("ROUND" over the number), just left of the pile. Tapping it shows everyone's scores: each round's score (+ for the winner, minus the tiles left for the others) and the running total, best first. A tap anywhere closes it. Round scores are the rounds this device has seen (up to the last 6 shown). Someone who joins mid-game sees the totals but not the earlier rounds' breakdown, as only totals are kept by the host.
+    - **Reset:** in the bottom-right corner.
+    - **Draw / End turn:** sits right beside the rack and stretches from the rack to Reset. On the narrowest phones (under 115 px of room, e.g. a 667 px wide iPhone SE in a browser) it drops its icon and keeps the label.
+    - **Top strip:** it is at least 52 px tall so Menu and Round never cover the table (on a 390 px tall phone the table loses about 5 px).
+    - **Messages:** the error messages above the table stay centred and clear of the Round button.
+    - **Checks:** tests check that nothing overlaps at 667x375, 844x390, 932x430, 1280x720, 1366x600, 1920x1080 and 2560x1080, and I looked at the web build at five of these sizes.
+119. **Sound on iPhone browsers** *(New after v0.1.11, your request.)* Every iPhone browser is Safari underneath, and Safari can't play the game's .ogg sounds. Each sound now also has an .m4a (AAC) copy:
+    - **Which copy:** the web version uses the .m4a on iPhones and iPads, and in any browser that says it can't play Ogg; everything else keeps the .ogg. If a file won't decode, it tries the other format.
+    - **How sounds play:** the web version plays through the browser's Web Audio API. Each sound is decoded once, and each play starts at once and can overlap.
+    - **Unlocking:** browsers (strictly on iPhone) keep sound locked until the first tap. The first tap or key press anywhere unlocks it, and does so again if the phone suspends sound (tab in the background, a call). Sounds before that first tap are skipped.
+    - **Mute switch:** with the iPhone's mute switch on, Safari stays silent; that's iOS's choice.
+    - **Apps:** the Android app still uses the .ogg files and the same player as before.
+    - **Lead-in:** the .m4a copies start within 3 ms of the .ogg ones.
+120. **QR code to join** *(New after v0.1.11, your request.)* The Host a game screen shows a QR code (dark on white) of the room's web link, `https://epicultrakingsmizzy.github.io/Michikub/?join=CODE`, next to Share and Copy invite. Any phone camera opens it.
+    - **iPhone and computers:** they join in the browser, on Join a game with the code filled in.
+    - **Android, app installed:** the web page hands off to the app before the game loads (an Android "intent" link). The app opens on Join a game with the code filled in.
+    - **Android, no app:** the browser goes on to the same link with `&web=1`, which never tries the app again, so it can't loop.
+    - **If the browser blocks the hand-off:** some browsers only open apps after a tap. The page then loads normally, and the Join screen shows "Have the Android app? Open in the app".
+    - **Shared links:** the hand-off works the same way for links sent in messages (#121).
+121. **Shorter invite** *(New after v0.1.11, your request.)* Share and Copy invite now send two lines: "Come play Michikub with me! Code ABCD" and the web link. The michikub:// line is gone, since messaging apps don't make it tappable. Android players with the app still land in the app through the web link's hand-off (#120). Pasting the whole invite into Join a game still keeps just the code.
+122. **Option, not done: opening links straight in the app (Android App Links)** Android can open `https://epicultrakingsmizzy.github.io/Michikub/?join=…` links in the app directly, without the browser, as verified App Links.
+    - **What it needs:** a file, `/.well-known/assetlinks.json`, at the root of the domain: `https://epicultrakingsmizzy.github.io/.well-known/assetlinks.json`. That's a separate repository named `EpicUltraKingSmizzy.github.io` (your user site), not the Michikub repo. The file lists the app's id (`com.michikub.michikub`) and its signing key fingerprint. The app's manifest would also get an https intent filter for that path, with `autoVerify`.
+    - **The catch:** a verified link would open the app for every link on `epicultrakingsmizzy.github.io/Michikub`, the home page too, for anyone with the app.
+    - **Status:** I haven't created the repository or added the filter. The hand-off (#120) already covers app users. Say if you want it.

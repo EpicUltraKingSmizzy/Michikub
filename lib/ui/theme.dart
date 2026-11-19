@@ -176,9 +176,12 @@ class GoldButton extends StatelessWidget {
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center, // When stretched (the in-game Draw button).
               children: [
                 if (icon != null) ...[Icon(icon, size: compact ? 16 : 20, color: fg), SizedBox(width: compact ? 6 : 8)],
-                Text(label, style: MK.body(compact ? 13 : 16, color: fg, weight: FontWeight.w700)),
+                Flexible(
+                    child: Text(label,
+                        maxLines: 1, softWrap: false, overflow: TextOverflow.fade, style: MK.body(compact ? 13 : 16, color: fg, weight: FontWeight.w700))),
               ],
             ),
           ),

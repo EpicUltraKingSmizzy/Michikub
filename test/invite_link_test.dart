@@ -3,12 +3,11 @@ import 'package:michikub/net/invite_link.dart';
 import 'package:michikub/net/peer.dart';
 
 void main() {
-  test('share text starts with the invitation, then the room code and the link', () {
-    expect(inviteShareText('ABCD'),
-        'Come play Michikub with me!\nRoom code: ABCD\nPlay in your browser: https://epicultrakingsmizzy.github.io/Michikub/?join=ABCD\nAndroid app: michikub://join/ABCD');
-    expect(inviteShareText(' ktmqzp '), contains('?join=KTMQZP'));
-    expect(inviteShareText(' ktmqzp '), endsWith('michikub://join/KTMQZP'));
-    expect(inviteShareText('ABCD').split('\n').first, 'Come play Michikub with me!');
+  test('share text: two lines, the invitation with the code, then the web link (no michikub:// line)', () {
+    expect(inviteShareText('ABCD'), 'Come play Michikub with me! Code ABCD\nhttps://epicultrakingsmizzy.github.io/Michikub/?join=ABCD');
+    expect(inviteShareText(' ktmqzp '), 'Come play Michikub with me! Code KTMQZP\nhttps://epicultrakingsmizzy.github.io/Michikub/?join=KTMQZP');
+    expect(inviteShareText('ABCD'), isNot(contains('michikub://')));
+    expect(codeFromJoinLink(inviteShareText('wxyz')), 'WXYZ', reason: 'pasting the whole invite into Join keeps the code');
   });
 
   test('join link and reading the code back', () {

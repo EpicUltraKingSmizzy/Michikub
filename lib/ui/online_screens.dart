@@ -1,7 +1,11 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../app/web_nav.dart';
+import '../net/app_handoff.dart';
 import '../app/sfx.dart';
 import '../app/bot_roster.dart';
 import '../app/prefs.dart';
@@ -138,11 +142,16 @@ class _HostLobbyScreenState extends State<HostLobbyScreen> {
                 else
                   RoomCode(net.code, style: MK.code(36, letterSpacing: 6)),
                 if (net.error != null) Text(net.error!, style: MK.body(12, color: MK.danger)),
-                Text('Send friends the link so they can join your room (long-press to copy the code).',
+                Text('Friends scan the code or open the link to join your room (long-press to copy the code).',
                     style: MK.body(11, color: MK.gold)),
               ]),
             ),
             const SizedBox(width: 12),
+            // Scan to join: the web join link (opens the app on Android phones that have it).
+            if (net.code.isNotEmpty && !net.opening) ...[
+              InviteQr(code: net.code),
+              const SizedBox(width: 12),
+            ],
             // Share and Copy invite, the same width, stacked.
             IntrinsicWidth(
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -221,7 +230,10 @@ String? lastRoomCode;
 class JoinScreen extends StatefulWidget {
   /// A room code to fill in (from a michikub://join/CODE link).
   final String? initialCode;
-  const JoinScreen({super.key, this.initialCode});
+  const JoinScreen({super.key, this.initialCode, this.offerApp});
+
+  /// Show "Open in the app" (null: web, Android, opened from a join link).
+  final bool? offerApp;
   @override
   State<JoinScreen> createState() => _JoinScreenState();
 }
@@ -232,6 +244,11 @@ class _JoinScreenState extends State<JoinScreen> {
   late final codeCtl = TextEditingController(text: widget.initialCode ?? lastRoomCode ?? '');
 
   /// The box holds the last room's code (not one from a link): the first tap clears it.
+  /// Web on an Android phone, opened from a join link: offer the app (if the automatic
+  /// hand-off in index.html didn't happen; see app_handoff.dart).
+  late final bool _offerApp =
+      widget.initialCode != null && (widget.offerApp ?? (kIsWeb && offersAppHandoff(Uri.base, browserUserAgent)));
+
   late bool _clearOnTap = widget.initialCode == null && (lastRoomCode ?? '').isNotEmpty;
 
   void _saveName() {
@@ -295,6 +312,18 @@ class _JoinScreenState extends State<JoinScreen> {
               const SizedBox(width: 12),
               GoldButton('Join', icon: Icons.login, onPressed: _joinCode),
             ]),
+            if (_offerApp) ...[
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  key: const ValueKey('openInApp'),
+                  onPressed: () => browserNavigate(androidIntentUrl(widget.initialCode!)),
+                  icon: const Icon(Icons.open_in_new, size: 18),
+                  label: const Text('Have the Android app? Open in the app'),
+                ),
+              ),
+            ],
           ]),
         ),
       ]),
@@ -366,4 +395,29 @@ class _GuestLobbyScreenState extends State<GuestLobbyScreen> {
       ]),
     );
   }
+}
+
+/// A QR code of a room's web join link, dark on white, for a friend's phone camera.
+class InviteQr extends StatelessWidget {
+  final String code;
+  final double size;
+  const InviteQr({super.key, required this.code, this.size = 116});
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+        message: 'Scan to join',
+        child: Container(
+          key: const ValueKey('inviteQr'),
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(6)),
+          child: QrImageView(
+            data: webJoinLink(code),
+            size: size,
+            padding: EdgeInsets.zero,
+            backgroundColor: Colors.white,
+            eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.square, color: Colors.black),
+            dataModuleStyle: const QrDataModuleStyle(dataModuleShape: QrDataModuleShape.square, color: Colors.black),
+          ),
+        ),
+      );
 }

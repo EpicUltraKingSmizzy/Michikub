@@ -21,6 +21,9 @@ class AppPrefs extends ChangeNotifier {
   /// Sound effects (Options).
   bool sound = true;
   bool highlightValid = true;
+
+  /// Web on iPhone/iPad: the Add to Home Screen hint was closed.
+  bool iosHintDismissed = false;
   List<BotLevel> practiceBots = [BotLevel.medium];
   List<String> hotSeatNames = ['Player 1', 'Player 2'];
 
@@ -38,6 +41,7 @@ class AppPrefs extends ChangeNotifier {
     haptics = p.getBool('haptics') ?? true;
     sound = p.getBool('sound') ?? true;
     highlightValid = p.getBool('highlightValid') ?? true;
+    iosHintDismissed = p.getBool('iosHintDismissed') ?? false;
     final r = p.getString('rules');
     if (r != null) rules = HouseRules.fromJson(jsonDecode(r) as Map<String, dynamic>);
     final pr = p.getString('presets');
@@ -67,6 +71,7 @@ class AppPrefs extends ChangeNotifier {
     await p.setBool('haptics', haptics);
     await p.setBool('sound', sound);
     await p.setBool('highlightValid', highlightValid);
+    await p.setBool('iosHintDismissed', iosHintDismissed);
     await p.setString('rules', jsonEncode(rules.toJson()));
     await p.setString('presets', jsonEncode({for (final e in presets.entries) e.key: e.value.toJson()}));
     await p.setString('test', jsonEncode(test.toJson()));

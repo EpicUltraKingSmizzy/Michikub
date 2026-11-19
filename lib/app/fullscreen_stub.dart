@@ -5,4 +5,7 @@ class Fullscreen {
   static bool get supported => false;
   static final ValueNotifier<bool> active = ValueNotifier(false);
   static Future<void> toggle() async {}
+
+  /// iPhone/iPad browser tab (no Fullscreen API): show the Add to Home Screen hint.
+  static bool get iosHomeScreenHint => false;
 }

@@ -1,7 +1,8 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
-import '../app/fullscreen.dart';
 import 'fullscreen_button.dart';
 
 import 'online_screens.dart';
@@ -16,8 +17,8 @@ class HomeScreen extends StatelessWidget {
   /// landscape loses height to its address bar. The apps keep the original layout.
   final bool fitToScreen;
 
-  /// The browser full screen button in the top-right corner (web, where the browser offers
-  /// full screen; null = ask the browser).
+  /// The browser full screen button (or the iPhone Add to Home Screen hint) in the top-right
+  /// corner (web; null = ask the browser).
   final bool? showFullscreen;
 
   @override
@@ -55,10 +56,10 @@ class HomeScreen extends StatelessWidget {
               final body = box.maxHeight >= _minFitHeight
                   ? fitted
                   : SingleChildScrollView(child: SizedBox(height: _minFitHeight, width: box.maxWidth, child: fitted));
-              if (!(showFullscreen ?? Fullscreen.supported)) return body;
+              if (!(showFullscreen ?? FullscreenButton.anything)) return body;
               return Stack(children: [
                 Positioned.fill(child: body),
-                const Positioned(top: 6, right: 6, child: FullscreenButton()),
+                Positioned(top: 6, right: 6, child: FullscreenButton(showButton: showFullscreen, compact: true)),
               ]);
             },
           ),
@@ -74,32 +75,7 @@ class HomeScreen extends StatelessWidget {
   Row _menu(void Function(Widget) go) => Row(
     mainAxisAlignment: MainAxisAlignment.center,
     children: [
-      Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(32),
-            child: Container(
-              decoration: BoxDecoration(
-                border: Border.all(color: MK.gold, width: 3),
-                borderRadius: BorderRadius.circular(32),
-              ),
-              child: Image.asset('assets/icon/michikub_icon_1024.png', width: 170, height: 170),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Michikub',
-            style: MK
-                .title(50)
-                .copyWith(
-                  color: MK.goldLight,
-                  shadows: const [Shadow(color: Colors.black, blurRadius: 8)],
-                ),
-          ),
-          Text('Play with friends. No ads, no subscription.', style: MK.body(14, color: MK.gold)),
-        ],
-      ),
+      const BrandBlock(),
       const SizedBox(width: 40),
       SizedBox(
         width: 300,
@@ -123,4 +99,40 @@ class HomeScreen extends StatelessWidget {
       ),
     ],
   );
+}
+
+/// The logo, the title and the tagline, as on the home screen; [scale] shrinks it (the Join
+/// screen shows a smaller one).
+class BrandBlock extends StatelessWidget {
+  final double scale;
+  const BrandBlock({super.key, this.scale = 1});
+
+  @override
+  Widget build(BuildContext context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(32 * scale),
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: MK.gold, width: 3 * scale.clamp(.5, 1)),
+                borderRadius: BorderRadius.circular(32 * scale),
+              ),
+              child: Image.asset('assets/icon/michikub_icon_1024.png', width: 170 * scale, height: 170 * scale),
+            ),
+          ),
+          SizedBox(height: 8 * scale),
+          Text(
+            'Michikub',
+            style: MK
+                .title(50 * scale)
+                .copyWith(
+                  color: MK.goldLight,
+                  shadows: const [Shadow(color: Colors.black, blurRadius: 8)],
+                ),
+          ),
+          Text('Play with friends. No ads, no subscription.',
+              textAlign: TextAlign.center, style: MK.body(14 * math.max(scale, .85), color: MK.gold)),
+        ],
+      );
 }

@@ -23,7 +23,7 @@ class NetSeat {
 /// then runs the authoritative [GameHost] and streams each guest only
 /// their own view.
 class NetHost extends ChangeNotifier {
-  final String myName;
+  String myName;
   HouseRules rules;
   String code = '';
   String? error;
@@ -162,6 +162,20 @@ class NetHost extends ChangeNotifier {
     notifyListeners();
   }
   bool get full => seats.length >= 4;
+
+  /// The host changed their name or avatar in the lobby: guests' lobbies show it at once, and
+  /// a game in progress (between rounds) takes it at the next round.
+  void updateMe({String? name, String? avatar, bool clearAvatar = false}) {
+    final i = seats.indexWhere((s) => s.info.id == 'host');
+    if (i < 0) return;
+    final old = seats[i].info;
+    final n = (name ?? old.name).trim();
+    seats[i].info = PlayerInfo(old.id, n.isEmpty ? old.name : n, old.kind,
+        level: old.level, avatar: clearAvatar ? null : (avatar ?? old.avatar));
+    myName = seats[i].info.name;
+    _broadcastLobby();
+    notifyListeners();
+  }
 
   void addBot(BotLevel level) {
     if (full) return;

@@ -7,10 +7,14 @@
 /// [userAgent] and [maxTouchPoints] come from `navigator` (iPads report a Mac user agent, so
 /// they're told apart by their touch screen).
 String webSoundFormat({required String oggSupport, required String userAgent, int maxTouchPoints = 0}) {
-  final ios = RegExp(r'iPhone|iPad|iPod').hasMatch(userAgent) || (userAgent.contains('Macintosh') && maxTouchPoints > 1);
-  if (ios || oggSupport.isEmpty) return 'm4a';
+  if (isAppleTouchDevice(userAgent, maxTouchPoints) || oggSupport.isEmpty) return 'm4a';
   return 'ogg';
 }
+
+/// An iPhone, iPad or iPod (iPads asking for the desktop site report a Mac user agent, so
+/// they're told apart by their touch screen).
+bool isAppleTouchDevice(String userAgent, int maxTouchPoints) =>
+    RegExp(r'iPhone|iPad|iPod').hasMatch(userAgent) || (userAgent.contains('Macintosh') && maxTouchPoints > 1);
 
 /// The other format, tried when a file won't decode in the first one.
 String otherSoundFormat(String ext) => ext == 'ogg' ? 'm4a' : 'ogg';

@@ -1,9 +1,14 @@
 {
     "name": "Michikub",
     "short_name": "Michikub",
+    "id": "/",
     "start_url": ".",
+    "scope": "/",
     "display": "fullscreen",
-    "display_override": ["fullscreen", "standalone"],
+    "display_override": [
+        "fullscreen",
+        "standalone"
+    ],
     "background_color": "#2A0E07",
     "theme_color": "#2A0E07",
     "description": "Michikub: an ad-free number-tile game for 2 to 4 friends.",

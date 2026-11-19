@@ -257,11 +257,17 @@ class MkScaffold extends StatelessWidget {
                         icon: const Icon(Icons.arrow_back_ios_new, color: MK.goldLight, size: 20),
                         onPressed: () => Navigator.of(context).maybePop(),
                       ),
-                    if (onTitleLongPress == null)
-                      titleWidget ?? Text(title, style: MK.title(22))
-                    else
-                      GestureDetector(onLongPress: onTitleLongPress, child: titleWidget ?? Text(title, style: MK.title(22))),
-                    const Spacer(),
+                    // Takes the room left by the actions; a long title is cut short rather than overflowing.
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: onTitleLongPress == null
+                            ? titleWidget ?? Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: MK.title(22))
+                            : GestureDetector(
+                                onLongPress: onTitleLongPress,
+                                child: titleWidget ?? Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: MK.title(22))),
+                      ),
+                    ),
                     ...actions,
                   ]),
                 ),

@@ -299,3 +299,22 @@ Most numbers live in a small set of constants: `BotTuning` (lib/engine/bot.dart)
     - **Why it moved:** App Links (#122) need the file at the root of the domain, and a `<name>.github.io` repository is the only way to own that root on GitHub Pages. The address is also shorter, and it isn't tied to a personal account.
     - **The old address:** it is now a small page that forwards to the new one, keeping `?join=CODE`, so invites already sent still work (`tool/deploy_old_site_redirect.sh`). The app also still reads old `…/Michikub/?join=` links pasted into Join.
 124. **Softer turn-start chime** *(New after v0.1.13, your request.)* The turn-start ding is now soft_ding_B: the same A1s ding with its sharp top end filtered off, a gentler 25 ms start and a little room echo, peaking at -24 dB, about 11 dB quieter than before.
+125. **Full screen on iPhones** *(New after v0.1.13, your request.)* iPhones don't let any web page go full screen, in Safari, Chrome or any other browser (they are all Safari underneath), so the full screen button can't work there.
+    - **What iPhones and iPads get instead:** the web version shows a share-icon button in its place: a round button in Home's corner, and a small "Full screen" pill with a close X on the Join screen. Tapping it explains how to Add to Home Screen: tap Share, choose Add to Home Screen, then open Michikub from the Home Screen.
+    - **From the Home Screen:** it opens with no browser bars, thanks to the web manifest (display full screen/standalone, landscape) and the `apple-mobile-web-app-capable` tag.
+    - **When it's hidden:** the tip doesn't show once Michikub is opened from the Home Screen. The X, or "Hide this tip", hides it for good on that phone.
+    - **What Home Screen mode can't do:** on iPhone it's "standalone", not true full screen. The status bar stays in portrait (it hides in landscape, which is how the game is played), and Safari's swipe-up home bar stays.
+    - **Other browsers:** Android and computers keep the real full screen button.
+126. **Full screen on the Join screen** *(New after v0.1.13, your request.)* In the web version, the full screen button (or the iPhone tip, #125) is also in the Join a game title bar. People who arrive from a link or QR code land there first.
+127. **Join a game, redesigned** *(New after v0.1.13, your request.)* The Join screen now shows a smaller logo, the title and the tagline (the same widgets as Home, scaled down) above the form: your avatar and name, the room code, and a full-width Join button.
+    - **Portrait:** everything is centred and fits a 360x740 phone without scrolling. In very short windows it scrolls.
+    - **Landscape:** the logo block and the form sit side by side, like Home.
+    - **Also changed:** the title bar now cuts a long title short instead of overflowing on narrow phones (every screen). On a narrow phone the Host a game room code panel puts the QR code and the Share buttons under the code.
+    - **Checks:** tests check 360x740, 390x844, 430x932, 667x375, 844x390 and 1280x720 for overflow.
+    - **Home:** unchanged in the apps.
+128. **Your avatar and name on Host a game** *(New after v0.1.13, your request.)* In the lobby, your own row (the host's) works like the Join screen:
+    - **Avatar:** tap your avatar to open the avatar picker.
+    - **Name:** edit your name right in the row.
+    - **Saved:** both are saved on the phone as your avatar and name, like on the Join screen.
+    - **Sent:** both go to everyone already in the room at once. Their lobbies update, and between rounds the new name or avatar takes effect from the next round.
+    - **Empty name:** an empty name isn't sent and goes back to the last one when you finish editing.

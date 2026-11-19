@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -13,7 +16,9 @@ import '../engine/host.dart';
 import '../net/invite_link.dart';
 import '../net/online.dart';
 import 'avatar.dart';
+import 'fullscreen_button.dart';
 import 'game_screen.dart';
+import 'home.dart';
 import 'rules_editor.dart';
 import 'setup_screens.dart';
 import 'theme.dart';
@@ -78,8 +83,39 @@ class _HostLobbyScreenState extends State<HostLobbyScreen> {
     if (mounted) setState(() {});
   }
 
+  /// Your name in the lobby (the host's own row): edits show to everyone at once and are
+  /// saved like the name on the Join and Options screens.
+  late final TextEditingController _nameCtl = TextEditingController(text: net.myName);
+  Timer? _nameSave;
+
+  void _nameChanged(String text) {
+    if (text.trim().isEmpty) return;
+    net.updateMe(name: text);
+    _nameSave?.cancel();
+    _nameSave = Timer(const Duration(milliseconds: 600), _saveName);
+  }
+
+  void _saveName() {
+    _nameSave?.cancel();
+    final n = _nameCtl.text.trim();
+    if (n.isEmpty) {
+      _nameCtl.text = net.myName; // An empty name goes back to the last one.
+      return;
+    }
+    prefs.name = n;
+    prefs.save();
+  }
+
+  Future<void> _pickAvatar() async {
+    playSfx(Sfx.click);
+    final picked = await showAvatarPicker(context); // Saves it as your avatar.
+    if (picked != null) net.updateMe(avatar: picked);
+  }
+
   @override
   void dispose() {
+    if (_nameSave?.isActive ?? false) _saveName();
+    _nameCtl.dispose();
     net.removeListener(_changed);
     if (!_started && !widget.betweenRounds) net.shutdown();
     super.dispose();
@@ -131,9 +167,8 @@ class _HostLobbyScreenState extends State<HostLobbyScreen> {
       ],
       body: ListView(padding: const EdgeInsets.fromLTRB(20, 4, 20, 20), children: [
         MkPanel(
-          child: Row(children: [
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          child: LayoutBuilder(builder: (context, box) {
+            final info = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('Room code', style: MK.body(13, color: MK.gold)),
                 if (net.opening)
                   Text('Opening…', style: MK.title(30))
@@ -144,23 +179,38 @@ class _HostLobbyScreenState extends State<HostLobbyScreen> {
                 if (net.error != null) Text(net.error!, style: MK.body(12, color: MK.danger)),
                 Text('Friends scan the code or open the link to join your room (long-press to copy the code).',
                     style: MK.body(11, color: MK.gold)),
-              ]),
-            ),
-            const SizedBox(width: 12),
-            // Scan to join: the web join link (opens the app on Android phones that have it).
-            if (net.code.isNotEmpty && !net.opening) ...[
-              InviteQr(code: net.code),
-              const SizedBox(width: 12),
-            ],
+              ]);
+            final qr = net.code.isNotEmpty && !net.opening;
             // Share and Copy invite, the same width, stacked.
-            IntrinsicWidth(
+            final buttons = IntrinsicWidth(
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              GoldButton('Share', icon: Icons.share, compact: true, onPressed: net.code.isEmpty ? null : () => _shareInvite(net.code)),
-              const SizedBox(height: 8),
-              GoldButton('Copy invite', icon: Icons.copy, compact: true, crimson: true, onPressed: net.code.isEmpty ? null : () => _copyInvite(net.code)),
+                GoldButton('Share', icon: Icons.share, compact: true, onPressed: net.code.isEmpty ? null : () => _shareInvite(net.code)),
+                const SizedBox(height: 8),
+                GoldButton('Copy invite', icon: Icons.copy, compact: true, crimson: true, onPressed: net.code.isEmpty ? null : () => _copyInvite(net.code)),
               ]),
-            ),
-          ]),
+            );
+            // Narrow (a phone upright): the code and text, then the QR code and the buttons.
+            if (box.maxWidth < 520) {
+              return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                info,
+                const SizedBox(height: 10),
+                Wrap(alignment: WrapAlignment.center, crossAxisAlignment: WrapCrossAlignment.center, spacing: 12, runSpacing: 10, children: [
+                  if (qr) InviteQr(code: net.code),
+                  buttons,
+                ]),
+              ]);
+            }
+            return Row(children: [
+              Expanded(child: info),
+              const SizedBox(width: 12),
+              // Scan to join: the web join link (opens the app on Android phones that have it).
+              if (qr) ...[
+                InviteQr(code: net.code),
+                const SizedBox(width: 12),
+              ],
+              buttons,
+            ]);
+          }),
         ),
         const SizedBox(height: 12),
         MkPanel(
@@ -169,12 +219,43 @@ class _HostLobbyScreenState extends State<HostLobbyScreen> {
             for (final s in net.seats)
               ListTile(
                 dense: true,
-                leading: PlayerAvatar(
-                    size: 34,
-                    name: s.info.name,
-                    image: s.info.avatar,
-                    color: seatColors[net.seats.indexOf(s) % seatColors.length]),
-                title: Text(s.info.name + (s.info.id == 'host' ? ' (you, host)' : ''), style: MK.body(14)),
+                leading: s.info.id == 'host'
+                    // Your own seat: tap your avatar to change it.
+                    ? Tooltip(
+                        message: 'Select your avatar',
+                        child: GestureDetector(
+                          key: const ValueKey('hostAvatar'),
+                          onTap: _pickAvatar,
+                          child: PlayerAvatar(size: 34, name: s.info.name, image: s.info.avatar, color: seatColors[0]),
+                        ),
+                      )
+                    : PlayerAvatar(
+                        size: 34,
+                        name: s.info.name,
+                        image: s.info.avatar,
+                        color: seatColors[net.seats.indexOf(s) % seatColors.length]),
+                title: s.info.id == 'host'
+                    // ...and edit your name right here.
+                    ? Row(children: [
+                        Flexible(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 220),
+                            child: TextField(
+                              key: const ValueKey('hostName'),
+                              controller: _nameCtl,
+                              maxLength: 16,
+                              style: MK.body(14),
+                              decoration: const InputDecoration(
+                                  isDense: true, counterText: '', hintText: 'Your name', suffixIcon: Icon(Icons.edit, size: 16, color: MK.gold)),
+                              onChanged: _nameChanged,
+                              onSubmitted: (_) => _saveName(),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text('(you, host)', style: MK.body(12, color: MK.gold)),
+                      ])
+                    : Text(s.info.name, style: MK.body(14)),
                 subtitle: s.info.kind == SeatKind.bot
                     ? Text([levelName(s.info.level), if (robotByAvatar(s.info.avatar) case final r?) r.tagline].join(' · '),
                         maxLines: 1, overflow: TextOverflow.ellipsis, style: MK.body(11, color: MK.gold))
@@ -230,7 +311,10 @@ String? lastRoomCode;
 class JoinScreen extends StatefulWidget {
   /// A room code to fill in (from a michikub://join/CODE link).
   final String? initialCode;
-  const JoinScreen({super.key, this.initialCode, this.offerApp});
+  const JoinScreen({super.key, this.initialCode, this.offerApp, this.showFullscreen});
+
+  /// Tests: show the full screen button (null: the web build decides).
+  final bool? showFullscreen;
 
   /// Show "Open in the app" (null: web, Android, opened from a join link).
   final bool? offerApp;
@@ -243,12 +327,12 @@ class _JoinScreenState extends State<JoinScreen> {
   late final nameCtl = TextEditingController(text: prefs.name);
   late final codeCtl = TextEditingController(text: widget.initialCode ?? lastRoomCode ?? '');
 
-  /// The box holds the last room's code (not one from a link): the first tap clears it.
   /// Web on an Android phone, opened from a join link: offer the app (if the automatic
   /// hand-off in index.html didn't happen; see app_handoff.dart).
   late final bool _offerApp =
       widget.initialCode != null && (widget.offerApp ?? (kIsWeb && offersAppHandoff(Uri.base, browserUserAgent)));
 
+  /// The box holds the last room's code (not one from a link): the first tap clears it.
   late bool _clearOnTap = widget.initialCode == null && (lastRoomCode ?? '').isNotEmpty;
 
   void _saveName() {
@@ -269,64 +353,97 @@ class _JoinScreenState extends State<JoinScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final codeField = TextField(
+      key: const ValueKey('joinCode'),
+      controller: codeCtl,
+      textCapitalization: TextCapitalization.characters,
+      keyboardType: TextInputType.text,
+      autocorrect: false,
+      enableSuggestions: false,
+      maxLength: 6,
+      textAlign: TextAlign.center,
+      // Pasting a whole invite ("Come play Michikub with me! Code ABCD" + the link) keeps just the code.
+      inputFormatters: [
+        TextInputFormatter.withFunction((old, nu) {
+          if (nu.text.length <= 6) return nu;
+          final c = codeFromJoinLink(nu.text);
+          return c == null ? nu : TextEditingValue(text: c, selection: TextSelection.collapsed(offset: c.length));
+        }),
+        // Codes are letters only: anything else typed is dropped (after a pasted invite is reduced to its code).
+        FilteringTextInputFormatter.allow(RegExp('[A-Za-z]')),
+      ],
+      style: MK.code(22, letterSpacing: 4),
+      onTap: () {
+        if (!_clearOnTap) return;
+        _clearOnTap = false;
+        codeCtl.clear();
+      },
+      onChanged: (_) => _clearOnTap = false,
+      decoration: const InputDecoration(labelText: 'Room code', counterText: ''),
+      onSubmitted: (_) => _joinCode(),
+    );
+    final form = ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 420),
+      child: MkPanel(
+        key: const ValueKey('joinForm'),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            const MyAvatarButton(),
+            const SizedBox(width: 10),
+            Expanded(
+              child: TextField(
+                  key: const ValueKey('joinName'),
+                  controller: nameCtl,
+                  maxLength: 16,
+                  decoration: const InputDecoration(labelText: 'Your name', counterText: '')),
+            ),
+          ]),
+          const SizedBox(height: 10),
+          codeField,
+          const SizedBox(height: 14),
+          GoldButton('Join', key: const ValueKey('joinButton'), icon: Icons.login, onPressed: _joinCode),
+          if (_offerApp) ...[
+            const SizedBox(height: 6),
+            TextButton.icon(
+              key: const ValueKey('openInApp'),
+              onPressed: () => browserNavigate(androidIntentUrl(widget.initialCode!)),
+              icon: const Icon(Icons.open_in_new, size: 18),
+              label: const Text('Have the Android app? Open in the app', textAlign: TextAlign.center),
+            ),
+          ],
+        ]),
+      ),
+    );
     return MkScaffold(
       title: 'Join a game',
-      body: ListView(padding: const EdgeInsets.fromLTRB(20, 4, 20, 20), children: [
-        MkPanel(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Row(children: [
-              const MyAvatarButton(),
-              const SizedBox(width: 10),
-              SizedBox(width: 200, child: TextField(controller: nameCtl, maxLength: 16, decoration: const InputDecoration(labelText: 'Your name', counterText: ''))),
-              const SizedBox(width: 12),
-              SizedBox(
-                width: 200,
-                child: TextField(
-                  controller: codeCtl,
-                  textCapitalization: TextCapitalization.characters,
-                  keyboardType: TextInputType.text,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  maxLength: 6,
-                  // Pasting a whole invite ("Come play Michikub with me! ... michikub://join/ABCD") keeps just the code.
-                  inputFormatters: [
-                    TextInputFormatter.withFunction((old, nu) {
-                      if (nu.text.length <= 6) return nu;
-                      final c = codeFromJoinLink(nu.text);
-                      return c == null ? nu : TextEditingValue(text: c, selection: TextSelection.collapsed(offset: c.length));
-                    }),
-                    // Codes are letters only: anything else typed is dropped (after a pasted invite is reduced to its code).
-                    FilteringTextInputFormatter.allow(RegExp('[A-Za-z]')),
-                  ],
-                  style: MK.code(22, letterSpacing: 4),
-                  onTap: () {
-                    if (!_clearOnTap) return;
-                    _clearOnTap = false;
-                    codeCtl.clear();
-                  },
-                  onChanged: (_) => _clearOnTap = false,
-                  decoration: const InputDecoration(labelText: 'Room code', counterText: ''),
-                  onSubmitted: (_) => _joinCode(),
+      actions: [if (widget.showFullscreen ?? kIsWeb) FullscreenButton(showButton: widget.showFullscreen)],
+      // Phones in portrait (people arriving from a link or QR code): logo, title and tagline
+      // above the form, centred and scrolling if short. Wide windows: side by side, like Home.
+      body: LayoutBuilder(builder: (context, box) {
+        final wide = box.maxWidth >= 640 && box.maxWidth > box.maxHeight;
+        final Widget content = wide
+            ? Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Flexible(
+                  flex: 4,
+                  child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 300), child: BrandBlock(scale: box.maxHeight < 380 ? .5 : .65)),
                 ),
-              ),
-              const SizedBox(width: 12),
-              GoldButton('Join', icon: Icons.login, onPressed: _joinCode),
-            ]),
-            if (_offerApp) ...[
-              const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  key: const ValueKey('openInApp'),
-                  onPressed: () => browserNavigate(androidIntentUrl(widget.initialCode!)),
-                  icon: const Icon(Icons.open_in_new, size: 18),
-                  label: const Text('Have the Android app? Open in the app'),
-                ),
-              ),
-            ],
-          ]),
-        ),
-      ]),
+                const SizedBox(width: 28),
+                Flexible(flex: 6, child: form),
+              ])
+            : Column(mainAxisSize: MainAxisSize.min, children: [
+                BrandBlock(scale: box.maxWidth < 380 ? .5 : .6),
+                const SizedBox(height: 18),
+                form,
+              ]);
+        return SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: math.max(0, box.maxHeight - 20)),
+            child: Center(child: content),
+          ),
+        );
+      }),
     );
   }
 }

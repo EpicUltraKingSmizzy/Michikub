@@ -259,7 +259,7 @@ Most numbers live in a small set of constants: `BotTuning` (lib/engine/bot.dart)
     - **Online and Practice:** every device plays it when the new round reaches it.
     - **Reduced motion:** if the device asks apps to cut down on animation, the deal is skipped and the tiles are simply there.
 114. **Pick-up sound** *(New after v0.1.11, your request.)* Long-pressing to pick up a set of 3 or more tiles, from the rack or the table, plays one of three short bursts of the attach sound, picked at random. Picking up 1-2 tiles makes no sound.
-    - **The sound files (please check):** I couldn't find files named "shuffle_burstC" on the computer. The three bursts already in the game, used for the 789/777 sort, were built from the domino draw hit. So I built three new ones from the attach sound (`attach_rec_C`), with the same three rhythms as the sort bursts. Previews: `shuffle_burstC_A/B/C` in the sounds folder. If these aren't the ones you meant, say which and I'll swap them.
-
-## 115. Draw sound timing
-The draw sound now plays as the drawn tile lands in the rack (about 1.07 s after the draw, slightly before the 1.1 s flight ends so the sound's attack meets the landing), for both your draws and opponents'. When an opponent's draw hands the turn to you, your turn-start chime now waits until 250 ms after that landing, so the order stays draw then chime. Adjust `TableTuning.drawSoundDelayMs` if it feels early or late on a device.
+    - **The sound files:** your original three burstC files (you sent them back after I'd rebuilt them), as `pick_A/B/C`.
+115. **Draw sound timing** *(New after v0.1.11, your request.)* The draw sound plays as the drawn tile lands in the rack, not when it leaves the pile. That's about 1.07 s after the draw, just before the 1.1 s flight ends, so the sound's attack meets the landing. It applies to your draws and opponents'.
+    - **Your turn chime:** when an opponent's draw hands you the turn, the chime now waits until 250 ms after their tile lands, so you still hear the draw, then the chime.
+    - **Tuning:** `TableTuning.drawSoundDelayMs`, if it feels early or late on a phone.

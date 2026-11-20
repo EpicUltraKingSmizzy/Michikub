@@ -722,8 +722,18 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     _selected.clear();
     _drag = _Drag(tiles, grab, p);
     _haptic();
+    // Picking up one tile: the tile tap, unless this gesture already played it (a long-press
+    // on a rack tile selects it first). Sets picked up by long-press have the pick sound.
+    if (tiles.length == 1 && _selectSfxThisGesture != tiles.first) playSfx(Sfx.select);
+    _selectSfxThisGesture = null;
     setState(() {});
   }
+
+  /// The tile whose select sound this gesture already played (long-press on a rack tile).
+  int? _selectSfxThisGesture;
+
+  /// The tile [_onTap] last played the select sound for.
+  int? _selectSfxTile;
 
   void _moveDrag(Offset global) {
     final d = _drag;
@@ -757,6 +767,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   }
 
   void _endDrag() {
+    _selectSfxThisGesture = null;
     final d = _drag;
     if (d == null) return;
     final g = _geo!;
@@ -930,6 +941,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     });
     _haptic();
     playSfx(Sfx.select);
+    _selectSfxTile = t;
   }
 
   /// Tap a tile (or long-press a run/group/set and let go), then tap a set: the tiles join
@@ -950,6 +962,13 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     if (at != null) {
       _groupSel = false;
       _setWorking(Layout.bridge(tmp, Layout.insertInto(tmp, sel, blk.tiles.first, at), sel, mayJoin: mayJoin), moved: sel);
+      return;
+    }
+    // An unfinished set with a joker: the joker moves where the tiles need it (J-1 + 3 makes 1-J-3).
+    final rearranged = Layout.jokerRearrange(tmp, sel, blk.tiles.first);
+    if (rearranged != null && mayJoin(sel, blk.tiles)) {
+      _groupSel = false;
+      _setWorking(Layout.bridge(tmp, rearranged, sel, mayJoin: mayJoin), moved: sel);
       return;
     }
     // No valid end: the joker swap shortcut, then the split for a number the run already has.
@@ -1052,7 +1071,9 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     if (b > a) {
       _startLongDrag(shown.sublist(a, b + 1), global);
     } else {
+      _selectSfxTile = null;
       _onTap(t);
+      _selectSfxThisGesture = _selectSfxTile; // moving on from here starts a drag: no second tap sound
     }
   }
 

@@ -290,6 +290,8 @@ class Layout {
     if (isValidMeld(at(index))) return insertInto(b, tiles, setTile, index);
     final end = attachEnd(blk.tiles, tiles, index);
     if (end != null) return insertInto(b, tiles, setTile, end);
+    final rearranged = jokerRearrange(b, tiles, setTile);
+    if (rearranged != null) return rearranged;
     final split = splitDuplicate(b, tiles, setTile);
     if (split != null) return split;
     if (!isValidMeld(blk.tiles)) {
@@ -312,7 +314,7 @@ class Layout {
     if (blk == null) return false;
     index = index.clamp(0, blk.length);
     if (isValidMeld([...blk.tiles.sublist(0, index), ...tiles, ...blk.tiles.sublist(index)])) return true;
-    return attachEnd(blk.tiles, tiles, index) != null;
+    return attachEnd(blk.tiles, tiles, index) != null || jokerRearranged(blk.tiles, tiles) != null;
   }
 
   /// A tile added to a run that already has its number: the run splits there and the tile
@@ -371,6 +373,8 @@ class Layout {
       final touched = onRight ? [...nb.tiles, ...tiles] : [...tiles, ...nb.tiles];
       if (isCompatible(touched)) return null; // fits where dropped: place joins it
       if (mayJoin != null && !mayJoin(tiles, nb.tiles)) continue;
+      final rearranged = jokerRearrange(board, tiles, nb.tiles.first);
+      if (rearranged != null) return rearranged;
       final end = attachEnd(nb.tiles, tiles, onRight ? nb.length : 0, allowPartial: true);
       if (end == null || end == (onRight ? nb.length : 0)) continue;
       return insertInto(board, tiles, nb.tiles.first, end);
@@ -678,6 +682,62 @@ class Layout {
   /// Moves a whole set (as given) so its first tile lands at [row], [col].
   static Board moveSet(Board board, List<int> tiles, int row, int col) =>
       place(board, tiles, row, col);
+
+  /// An unfinished set holding a joker (a pair like 1-J or J-5) stays open to being a run or
+  /// a group until its tiles decide. When [sel] doesn't fit at either end as the set lies,
+  /// the joker moves to where the tiles need it: J-1 + 3 makes 1-J-3 (the joker is the 2),
+  /// 5-J + 3 makes 3-J-5, and 1-J + 2 makes 1-2-J. A joker that isn't needed in a gap goes
+  /// to the high end, or the low end if the run would pass 13 (12-J + 13 makes J-12-13).
+  /// Returns the set's new order, or null when the tiles can't make a valid run (a yellow 3
+  /// and red 1-J), or the set is complete (complete sets use the joker swap shortcut) or has
+  /// no joker. Groups never need this: a group's tiles fit at either end.
+  static List<int>? jokerRearranged(List<int> set, List<int> sel) {
+    if (sel.isEmpty || !set.any(isJoker) || isValidMeld(set)) return null;
+    final all = [...set, ...sel];
+    final real = all.where((t) => !isJoker(t)).toList()..sort((a, b) => tileNumber(a) - tileNumber(b));
+    if (real.isEmpty || real.any((t) => tileColor(t) != tileColor(real.first))) return null;
+    final jokers = all.where(isJoker).toList();
+    final run = <int>[real.first];
+    for (var i = 1; i < real.length; i++) {
+      final gap = tileNumber(real[i]) - tileNumber(real[i - 1]) - 1;
+      if (gap < 0 || gap > jokers.length) return null;
+      for (var g = 0; g < gap; g++) {
+        run.add(jokers.removeLast());
+      }
+      run.add(real[i]);
+    }
+    var hi = tileNumber(real.last);
+    var lo = tileNumber(real.first);
+    for (final jk in jokers) {
+      if (hi < 13) {
+        run.add(jk);
+        hi++;
+      } else if (lo > 1) {
+        run.insert(0, jk);
+        lo--;
+      } else {
+        return null;
+      }
+    }
+    return isValidMeld(run) ? run : null;
+  }
+
+  /// [tiles] added to the unfinished set holding [setTile] with its joker moved where needed
+  /// ([jokerRearranged]); the set keeps its place, growing left when the new tiles go in front.
+  /// Null when that doesn't apply.
+  static Board? jokerRearrange(Board board, List<int> tiles, int setTile) {
+    final b = board.copy()..removeTiles(tiles);
+    final blk = b.blockOf(setTile);
+    if (blk == null) return null;
+    final run = jokerRearranged(blk.tiles, tiles);
+    if (run == null) return null;
+    final grow = run.length - blk.length;
+    final start = tiles.contains(run.first) ? blk.start - grow : blk.start;
+    b.clearBlock(blk);
+    final others = b.blocksInRow(blk.row);
+    _resolveRow(b, blk.row, others, Block(blk.row, start.clamp(0, Board.width - run.length), run));
+    return b;
+  }
 
   /// Tap-to-attach: the end of [set] that [sel] joins (0 = before the first tile,
   /// set.length = after the last), or null if neither end gives a valid set. When both work,

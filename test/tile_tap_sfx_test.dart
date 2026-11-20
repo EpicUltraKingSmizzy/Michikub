@@ -139,7 +139,7 @@ void main() {
       await table(tester, [r(1), k(13)]);
       await drag(tester, r(1), emptyBelow(tester, b(4)));
       expect(shown(tester).blockOf(r(1))?.tiles, [r(1)], reason: 'a lone tile on the table');
-      expect(log(), [Sfx.placeSingle]);
+      expect(log(), [Sfx.select, Sfx.placeSingle], reason: 'the tile tap as the drag starts');
       await finish(tester);
     });
 
@@ -148,7 +148,7 @@ void main() {
       await drag(tester, b(6), emptyBelow(tester, b(4)));
       expect(shown(tester).blockOf(b(6))?.tiles, [b(6)]);
       expect(shown(tester).blockOf(b(4))?.tiles, [b(4), b(5)]);
-      expect(log(), [Sfx.placeSingle]);
+      expect(log(), [Sfx.select, Sfx.placeSingle], reason: 'the tile tap as the drag starts');
       await finish(tester);
     });
 
@@ -167,7 +167,7 @@ void main() {
       final six = find.byKey(ValueKey(b(6)));
       await drag(tester, b(7), tester.getCenter(six) + Offset(tester.getSize(six).width, 0));
       expect(shown(tester).blockOf(b(7))?.tiles, [b(4), b(5), b(6), b(7)]);
-      expect(log(), [Sfx.attach]);
+      expect(log(), [Sfx.select, Sfx.attach]);
       await finish(tester);
     });
 
@@ -181,6 +181,61 @@ void main() {
       await tester.pump(const Duration(milliseconds: 600));
       expect(shown(tester).blockOf(r(1))?.tiles, [r(1), r(2)]);
       expect(log(), [Sfx.place]);
+      await finish(tester);
+    });
+  });
+
+  group('picking up a tile to drag it: the tile tap', () {
+    Future<TestGesture> lift(WidgetTester tester, int tile, {bool longPress = false}) async {
+      final from = tester.getCenter(find.byKey(ValueKey(tile)));
+      final g = await tester.startGesture(from);
+      if (longPress) await tester.pump(const Duration(milliseconds: 700));
+      for (var i = 1; i <= 4; i++) {
+        await g.moveTo(from + Offset(0, -12.0 * i));
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      return g;
+    }
+
+    testWidgets('a rack tile: once, as the drag starts', (tester) async {
+      await table(tester, [r(1), k(13)]);
+      final g = await lift(tester, r(1));
+      expect(log(), [Sfx.select]);
+      await g.up();
+      await tester.pump(const Duration(milliseconds: 600));
+      await finish(tester);
+    });
+
+    testWidgets('a table tile: once', (tester) async {
+      await table(tester, [k(13)]);
+      final g = await lift(tester, b(6));
+      expect(log(), [Sfx.select]);
+      await g.up();
+      await tester.pump(const Duration(milliseconds: 600));
+      await finish(tester);
+    });
+
+    testWidgets('a long-press on a lone rack tile, then a drag: still once', (tester) async {
+      await table(tester, [r(1), k(13)]);
+      final g = await lift(tester, r(1), longPress: true);
+      expect(log(), [Sfx.select]);
+      await g.up();
+      await tester.pump(const Duration(milliseconds: 600));
+      log().clear();
+      // A later drag of the same tile is a new gesture: its own tap.
+      final g2 = await lift(tester, r(1));
+      expect(log(), [Sfx.select]);
+      await g2.up();
+      await tester.pump(const Duration(milliseconds: 600));
+      await finish(tester);
+    });
+
+    testWidgets('a long-press set pick-up (3 tiles): the pick burst, no tile tap', (tester) async {
+      await table(tester, [r(1), r(2), r(3), k(13)]);
+      final g = await lift(tester, r(2), longPress: true);
+      expect(log(), [Sfx.pick]);
+      await g.up();
+      await tester.pump(const Duration(milliseconds: 600));
       await finish(tester);
     });
   });

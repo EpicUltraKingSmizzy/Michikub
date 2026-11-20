@@ -46,6 +46,10 @@ class BotTuning {
 
   /// Search budget for picking melds.
   static const int searchNodes = 6000;
+
+  /// Freeing a table joker with a free tile from another table set (not just a rack tile).
+  /// Easy bots don't spot it.
+  static const Map<BotLevel, bool> freeTableJokers = {BotLevel.easy: false, BotLevel.medium: true, BotLevel.hard: true};
 }
 
 enum BotActionKind { singleTile, splitOrSetMove, newSet }
@@ -72,8 +76,9 @@ enum BotStepType {
   /// A tile taken out of a set on the board and set down alone.
   removeTile,
 
-  /// The joker swap shortcut: a rack tile played onto a set that holds a joker, taking the
-  /// joker's place; the joker shifts to the set's end or edge (or is set down alone nearby).
+  /// The joker swap shortcut: a tile played onto a set that holds a joker, taking the joker's
+  /// place; the joker shifts to the set's end or edge (or is set down alone nearby). The tile
+  /// comes from the rack, or ([BotStep.tableTile]) is a free tile taken from another table set.
   /// One attach, so 1 move.
   jokerSwap,
 }
@@ -101,7 +106,12 @@ class BotStep {
   /// For tileAt: where the tile goes.
   final int? row, col;
 
-  const BotStep._(this.type, {this.tiles = const [], this.tile, this.targetSetTile, this.atEnd = true, this.index, this.row, this.col});
+  /// For jokerSwap: the tile is a free tile from another table set, not a rack tile.
+  final bool tableTile;
+
+  const BotStep._(this.type,
+      {this.tiles = const [], this.tile, this.targetSetTile, this.atEnd = true, this.index, this.row, this.col,
+      this.tableTile = false});
   const BotStep.newSet(List<int> tiles) : this._(BotStepType.newSet, tiles: tiles);
   const BotStep.extend(int tile, int setTile, bool atEnd) : this._(BotStepType.extend, tile: tile, targetSetTile: setTile, atEnd: atEnd);
   const BotStep.tileAt(int tile, int row, int col) : this._(BotStepType.tileAt, tile: tile, row: row, col: col);
@@ -111,24 +121,25 @@ class BotStep {
     : this._(BotStepType.moveSet, tile: setTile, targetSetTile: toSetTile, atEnd: atEnd);
   const BotStep.split(int beforeTile) : this._(BotStepType.split, tile: beforeTile);
   const BotStep.removeTile(int tile) : this._(BotStepType.removeTile, tile: tile);
-  const BotStep.jokerSwap(int tile, int joker) : this._(BotStepType.jokerSwap, tile: tile, targetSetTile: joker);
+  const BotStep.jokerSwap(int tile, int joker, {bool tableTile = false})
+    : this._(BotStepType.jokerSwap, tile: tile, targetSetTile: joker, tableTile: tableTile);
 
   bool get isNewSet => type == BotStepType.newSet;
   bool get isExtension => type == BotStepType.extend;
 
   /// True when the step brings tiles from the rack (rather than moving table tiles).
   bool get fromRack =>
-      type == BotStepType.newSet || type == BotStepType.extend || type == BotStepType.tileAt || type == BotStepType.jokerSwap;
+      type == BotStepType.newSet || type == BotStepType.extend || type == BotStepType.tileAt ||
+      type == BotStepType.jokerSwap && !tableTile;
+
+  /// The rack tiles this step puts on the board.
+  List<int> get rackTilesPlayed => !fromRack ? const [] : (isNewSet ? tiles : [tile!]);
 
   /// Every step is one move.
   int get moveCount => 1;
 
   /// Rack tiles this step puts on the board.
-  int get tileCount => switch (type) {
-    BotStepType.newSet => tiles.length,
-    BotStepType.extend || BotStepType.tileAt || BotStepType.jokerSwap => 1,
-    _ => 0,
-  };
+  int get tileCount => rackTilesPlayed.length;
 
   /// Pacing: a new set from the rack (2 s), a split or whole-set move (1 s), or a single tile (0.5 s).
   BotActionKind get kind => switch (type) {
@@ -155,14 +166,12 @@ class BotPlay {
   };
 
   /// Rack tiles used, for telling plays apart.
-  Set<int> get rackTiles => {
-    for (final s in steps)
-      if (s.fromRack) ...(s.isNewSet ? s.tiles : [s.tile!]),
-  };
+  Set<int> get rackTiles => {for (final s in steps) ...s.rackTilesPlayed};
 
   /// Identifies "the same play" across re-evaluations within a turn (for overlooking).
-  String get signature =>
-      steps.map((s) => '${s.type.index}:${s.tiles.join(',')}:${s.tile}:${s.targetSetTile}:${s.atEnd}:${s.index}').join('|');
+  String get signature => steps
+      .map((s) => '${s.type.index}:${s.tiles.join(',')}:${s.tile}:${s.targetSetTile}:${s.atEnd}:${s.index}:${s.tableTile}')
+      .join('|');
 }
 
 /// A planned turn: a list of plays, or (if empty) draw.
@@ -276,8 +285,12 @@ List<List<int>> bestCombination(List<List<int>> cands, {int minPoints = 0, int? 
 ///  * a joker reclaim, in honest moves: the table joker is moved to the end of another table
 ///    set (1 move), or into a new set started with two rack tiles (2 moves: the pair, then
 ///    the joker); then the rack tile the joker stood for is attached into the gap it left,
-///    which rejoins the set (1 move). 2 or 3 moves; the joker never leaves the table.
-List<BotPlay> findPlays(Board board, List<int> rack, {bool rackOnly = false}) {
+///    which rejoins the set (1 move). 2 or 3 moves; the joker never leaves the table;
+///  * a table joker freed and used at once ([jokerFreeingPlays]): a substitute takes its
+///    place (a rack tile, or with [freeJokers] a free tile from another table set), then the
+///    joker goes into a new set with rack tiles or bridges a gap to a rack tile at a set's end;
+///  * a rack joker bridging a gap at a set's end: 3-4-5 + joker + 7 makes 3-4-5-J-7 (2 moves).
+List<BotPlay> findPlays(Board board, List<int> rack, {bool rackOnly = false, bool freeJokers = true}) {
   final out = <BotPlay>[];
   for (final m in candidateMelds(rack)) {
     out.add(BotPlay([BotStep.newSet(m)]));
@@ -411,22 +424,150 @@ List<BotPlay> findPlays(Board board, List<int> rack, {bool rackOnly = false}) {
       }
     }
   }
-  // Keep only plays that really end valid (and use each rack tile once).
-  return out.where((p) {
-    final tiles = <int>[
-      for (final s in p.steps)
-        if (s.fromRack) ...(s.isNewSet ? s.tiles : [s.tile!]),
-    ];
-    if (tiles.toSet().length != tiles.length) return false;
-    // No move may put a table tile into a rack: every table tile stays on the table at every step.
-    final tableTiles = board.allTiles.toSet();
-    var end = board;
-    for (final st in p.steps) {
-      end = applyBotStep(end, st);
-      if (tableTilesSentToRack(tableTiles, end).isNotEmpty) return false;
+  // A rack joker bridging a gap to a rack tile at a set's end: 3-4-5 + J + 7.
+  final rackJoker = distinctRack.where(isJoker).firstOrNull;
+  if (rackJoker != null) {
+    for (final blk in blocks) {
+      for (final t in real) {
+        out.addAll(_bridgeSteps(blk.tiles, rackJoker, t, (atEnd) => BotStep.extend(rackJoker, blk.tiles.first, atEnd)).map(BotPlay.new));
+      }
     }
-    return end.isValid;
-  }).toList();
+  }
+  // Freeing a table joker and using it at once.
+  out.addAll(jokerFreeingPlays(board, rack, freeJokers: freeJokers));
+  // Keep only plays that really end valid (and use each rack tile once).
+  return out.where((p) => _endsValid(board, p)).toList();
+}
+
+/// The play uses each rack tile once, never sends a table tile to a rack, and ends valid.
+bool _endsValid(Board board, BotPlay p) {
+  final tiles = [for (final s in p.steps) ...s.rackTilesPlayed];
+  if (tiles.toSet().length != tiles.length) return false;
+  // No move may put a table tile into a rack: every table tile stays on the table at every step.
+  final tableTiles = board.allTiles.toSet();
+  var end = board;
+  for (final st in p.steps) {
+    end = applyBotStep(end, st);
+    if (tableTilesSentToRack(tableTiles, end).isNotEmpty) return false;
+  }
+  return end.isValid;
+}
+
+/// Ways a joker bridges a gap at an end of [set] to rack tile [t] (3-4-5 + J + 7, or
+/// 3 + J + 5-6-7), only where [t] couldn't go on that end by itself. [placeJoker] is the step
+/// that puts the joker at the end (true) or front (false); then [t] is added beyond it.
+List<List<BotStep>> _bridgeSteps(List<int> set, int joker, int t, BotStep Function(bool atEnd) placeJoker) => [
+  if (isValidMeld([...set, joker, t]) && !isValidMeld([...set, t])) [placeJoker(true), BotStep.extend(t, set.first, true)],
+  if (isValidMeld([t, joker, ...set]) && !isValidMeld([t, ...set])) [placeJoker(false), BotStep.extend(t, set.first, false)],
+];
+
+/// The free tiles on [board]: tiles that can be taken off the table while every set they
+/// leave behind stays valid. The ends of runs of 4+, a middle tile whose two halves are both
+/// runs of 3+ (the 6 in 3-4-5-6-7-8-9), any tile of a group of 4. Jokers aren't listed.
+List<int> freeTableTiles(Board board) {
+  final out = <int>[];
+  for (final blk in board.blocks) {
+    if (blk.length < 4 || !isValidMeld(blk.tiles)) continue;
+    for (final t in blk.tiles) {
+      if (isJoker(t)) continue;
+      final tmp = board.copy()..removeTiles([t]);
+      final left = tmp.blocksInRow(blk.row).where((x) => x.start < blk.end && x.end > blk.start);
+      if (left.every((x) => isValidMeld(x.tiles))) out.add(t);
+    }
+  }
+  return out;
+}
+
+/// Plays that free a joker on the table and use it at once (the rules keep every table tile
+/// on the table and every set valid, so a freed joker must be played again the same turn):
+///  1. A substitute takes the joker's place: a rack tile, or (with [freeJokers]) a free table
+///     tile ([freeTableTiles]) from another set. In a run the joker counts for its own value,
+///     or, at an end, the run may grow at the other end instead (4-5-J: a 3 or a 6). In a
+///     group it stands for any missing colour.
+///  2. The joker is then used with rack tiles: in a new set it makes possible (the rack tiles
+///     go down, then the joker is moved in), or bridging a
+///     gap at a set's end to a rack tile (3-4-5 + J + 7).
+/// Only uses that need the joker count (no swap just to move it).
+List<BotPlay> jokerFreeingPlays(Board board, List<int> rack, {bool freeJokers = true}) {
+  final out = <BotPlay>[];
+  if (!board.isValid) return out;
+  final realRack = <int>[];
+  for (final t in rack) {
+    if (!isJoker(t) && !realRack.any((u) => tileColor(u) == tileColor(t) && tileNumber(u) == tileNumber(t))) realRack.add(t);
+  }
+  final free = freeJokers ? freeTableTiles(board) : const <int>[];
+  final tableTiles = board.allTiles.toSet();
+  for (final blk in board.blocks) {
+    for (final j in blk.tiles.where(isJoker)) {
+      // Ways to free j: the steps, and the board after them (j still on it, now removable).
+      final ways = <({List<BotStep> steps, Board after, int? rackTile})>[];
+      void consider(int f, bool fromRack) {
+        void add(List<BotStep> steps, Board after) {
+          final rest = after.copy()..removeTiles([j]);
+          if (!rest.isValid || !after.allTiles.toSet().containsAll(tableTiles)) return;
+          ways.add((steps: steps, after: after, rackTile: fromRack ? f : null));
+        }
+
+        final res = Layout.jokerShortcut(board, f, j);
+        if (res != null) add([BotStep.jokerSwap(f, j, tableTile: !fromRack)], res.board);
+        final i = blk.tiles.indexOf(j);
+        if (analyzeMeld(blk.tiles)?.kind == MeldKind.run && (i == 0 || i == blk.length - 1)) {
+          // A joker at an end: the run may grow at the other end instead.
+          final anchor = blk.tiles.firstWhere((t) => !isJoker(t));
+          final atEnd = i == 0;
+          if (!isValidMeld(atEnd ? [...blk.tiles, f] : [f, ...blk.tiles])) return;
+          final step = fromRack
+              ? BotStep.extend(f, anchor, atEnd)
+              : BotStep.moveTile(f, toSetTile: anchor, index: atEnd ? blk.length : 0);
+          add([step], applyBotStep(board, step));
+        }
+      }
+
+      for (final f in free) {
+        if (!blk.tiles.contains(f)) consider(f, false);
+      }
+      for (final f in realRack) {
+        consider(f, true);
+      }
+      final seen = <String>{};
+      for (final w in ways) {
+        final hand = [...rack]..remove(w.rackTile);
+        for (final use in _jokerUses(w.after, j, hand)) {
+          final play = BotPlay([...w.steps, ...use]);
+          final key = '${w.rackTile != null}|${BotPlay(use).signature}';
+          if (seen.contains(key) || !_endsValid(board, play)) continue;
+          seen.add(key);
+          out.add(play);
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/// Uses for joker [j] (on [board], ready to be moved) that need it, each with rack tiles from
+/// [hand]: a new set it makes possible, or a bridge to a rack tile at a set's end.
+List<List<BotStep>> _jokerUses(Board board, int j, List<int> hand) {
+  final out = <List<BotStep>>[];
+  for (final m in candidateMelds([...hand, j])) {
+    if (!m.contains(j)) continue;
+    final without = [...m]..remove(j);
+    if (without.length >= 3 && isValidMeld(without)) continue;
+    // The rack tiles first (they may not be a set yet), then the joker moved in: 2 moves.
+    out.add([BotStep.newSet(without), BotStep.moveTile(j, toSetTile: without.first, index: m.indexOf(j))]);
+  }
+  final real = <int>[];
+  for (final t in hand) {
+    if (!isJoker(t) && !real.any((u) => tileColor(u) == tileColor(t) && tileNumber(u) == tileNumber(t))) real.add(t);
+  }
+  for (final blk in board.blocks) {
+    if (blk.tiles.contains(j) || !isValidMeld(blk.tiles)) continue;
+    for (final t in real) {
+      out.addAll(_bridgeSteps(blk.tiles, j, t,
+          (atEnd) => BotStep.moveTile(j, toSetTile: blk.tiles.first, index: atEnd ? blk.length : 0)));
+    }
+  }
+  return out;
 }
 
 /// Applies every step of [play].
@@ -493,7 +634,7 @@ BotPlan planTurn({
   final overlooked = <String>{};
   final decided = <String>{};
   while (true) {
-    final found = findPlays(b, hand).where((p) => movesLeft == null || p.moveCount <= movesLeft).toList()..sort(_comparePlays);
+    final found = findPlays(b, hand, freeJokers: BotTuning.freeTableJokers[level]!).where((p) => movesLeft == null || p.moveCount <= movesLeft).toList()..sort(_comparePlays);
     if (found.isEmpty) break;
     for (final p in found) {
       final sig = p.signature;

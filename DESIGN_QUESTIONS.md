@@ -345,3 +345,44 @@ Most numbers live in a small set of constants: `BotTuning` (lib/engine/bot.dart)
 133. **Tile tap when you pick up a tile** *(New after v0.1.14, your request.)* Starting to drag a tile plays the same tile tap as selecting one (#129), on the rack or the table.
     - **Once per gesture:** a long-press on a lone rack tile selects it (with the tap) and then drags on without a second tap.
     - **Sets:** a long-press that picks up a set of 3 or more plays the pick burst, as before, with no tile tap.
+134. **Home menu, new order** *(New after v0.1.14, your request.)* The two gold buttons at the top are now **Host a game** and **Join a game**. Below them, in crimson: **Puzzles**, **Play vs bots**, **Pass-and-play** and **Options**. It's the same on Android and the web; the web still shrinks the menu to fit the window.
+    - **Renamed:** "Practice vs bots" is now "Play vs bots" (the button and its setup screen title), and "Options & house rules" is now "Options" on Home. The Options screen keeps its full title, because house rules live there.
+135. **Puzzles: what a puzzle is** *(New after v0.1.14, your request.)* You get a rack, and some sets are already on the table. Every rack tile can be played, but only by rearranging the table. There's no turn timer, no Draw or End turn button, no pile count and no opponents. Reset takes everything back to the puzzle's start. The puzzle is solved the moment every rack tile is on the table and every set is valid, so there's nothing to press.
+    - **Tiles:** each colour and number appears at most once in a puzzle (no duplicate copies), plus up to 2 jokers. That keeps every tile unique, so the checks below are exact and fast.
+    - **The five techniques** (your list): freeing a joker into a new set, moving a joker along its run, splitting a run into two runs, taking a tile from a group to build a new set, and taking a tile out of a run to make a group.
+136. **Puzzles: how they're made and checked** *(New after v0.1.14, the agreed 10-step plan.)*
+    - **Two solvers:** the full solver splits all the tiles (table plus rack) into valid sets by backtracking from the lowest tile, and can count the solutions. The simple-moves solver leaves every table set as it is. Rack tiles may only go on the ends of runs, turn a group of 3 into 4, or make new sets on their own.
+    - **Making one:** a winning table of 5 to 9 sets. Then one to three "cores", each forcing one technique on purpose (for example, a group of 4 on the table with a red 8 and red 9 in the rack). Filler sets stay as they are, and some of them give the rack a tile for a run end, as a decoy. Some puzzles also get their starting table rebuilt into a different valid arrangement of the same tiles. A random pile of filler tiles that doesn't make full sets loses only the leftover tiles.
+    - **Checks:** every puzzle must be solvable by the full solver, and the simple-moves solver must fail. Every solution is compared with the starting table, and each one must use at least one of the five techniques. A puzzle with more than 60 solutions is too open and is dropped.
+    - **Repairs:** when a puzzle turns out too easy, up to 24 small fixes are tried before it's thrown away: swap a joker into a table set and put its tile in the rack, drop a rack tile, move a rack tile onto a set's end, or grow a group to 4. Each fix is checked by both solvers.
+    - **The run (fixed seed 20261125):** 3,190 attempts took 2.4 s. 2,357 passed (73.9%). 157 were too easy, and repairs saved 83 of them (52.9%). Nothing stalled. 1,200 were kept: 400 per difficulty, with no duplicates, counting colour-swapped copies as the same puzzle.
+    - **Rebuild:** `dart run tool/gen_puzzles.dart 400 assets/puzzles/puzzles.json` writes the same pack again. A test checks every shipped puzzle with both solvers.
+137. **Puzzles: difficulty and order** *(New after v0.1.14.)*
+    - **Score:** 2.5 per technique needed, 1.4 per table set broken up, 0.35 per rack tile, 1.5 if a joker is in play, plus 2 when there's only one solution (1 for 2 or 3 solutions). Under 7 is Easy, 7 to 10 is Medium, 10 and up is Hard.
+    - **What came out:** Easy racks have 1 to 5 tiles (2.1 on average), Medium 2 to 10 (4.2) and Hard 2 to 11 (5.8). Jokers are in 107 Easy, 206 Medium and 257 Hard puzzles. Easy has no run splits, because a split always needs two techniques (the run splits and its middle tile goes to a group), which scores Medium or above.
+    - **Order:** the mix is balanced across techniques. Each difficulty starts with a short introduction to one technique at a time (4 puzzles each on Easy, 2 each on Medium and Hard), then goes from easiest to hardest.
+    - **Open question:** Easy racks are small (often 2 tiles). Say if you'd like Easy a bit meatier.
+138. **Puzzles screen, progress and endless mode** *(New after v0.1.14, your request.)*
+    - **Buttons:** Easy, Medium and Hard each show "solved/400" and fill with gold from the left in proportion. A finished difficulty gets a drawn gold star beside its button (a vector, not an emoji). The space for the star is always kept, so the buttons line up.
+    - **Which puzzle opens:** tapping a difficulty opens its lowest unsolved puzzle. Progress is saved on the device.
+    - **Endless mode:** after the star, each new puzzle is made on the device by the same generator and checks (a few milliseconds). Endless puzzles carry on the numbering (#401, #402 …). The last 500 solved ones per difficulty are kept, so they can be replayed.
+    - **The #number button:** at the top of the table (for example "Easy #12"). It opens a scrolling list of the puzzles you've beaten in that difficulty, and picking one replays it. After a replay, the next win goes on to your next unsolved puzzle.
+139. **Puzzles: deal, win and tidy-up** *(New after v0.1.14, your request.)*
+    - **Deal:** opening a puzzle plays the game-start wash while the table tiles, then the rack tiles, fly one after another from the deck in the top corner (within 1.8 s).
+    - **Win:** the turn-end bell plays, there's a 1 s pause, then every tile flies back into the deck, table first, then rack (one every 28 ms, each flight 0.52 s). The next puzzle is then dealt. The table ignores touches from the win until the next deal lands.
+    - **Fly-back sound:** three candidates are waiting for your pick, so the code has a clearly marked silent placeholder (`Sfx.puzzleClear` in lib/app/sfx.dart):
+      - A: your own tile taps in a speeding-up run.
+      - B: plastic chips swept up and stacked (Kenney, CC0).
+      - C: real tiles tumbling into a pile (Freesound 785585, CC0).
+140. **Opening auto-draw** *(New after v0.1.14, your request.)*
+    - **Who starts in it:** every person (never bots) begins a round in auto-draw, and their Draw button glows and reads "Auto-draw". The exception is a starting rack that already holds sets worth the first-meld minimum together. Those players start normally, with no glow.
+    - **What it does:** each of their turns, after 1.2 s (2.6 s on a round's first turn, so the deal can land), the game draws for them and passes. At the start of each of their turns the rack is checked again, and auto-draw ends as soon as it holds a first play. They then play the turn themselves.
+    - **Tap and long press:** tapping the glowing button turns auto-draw off and draws nothing; it's not your turn's Draw. A long press turns it back on, at any time, even on someone else's turn.
+    - **When it can't come back:** after your first play, when the pile is empty, or when the first-meld rule is Off (then it's never on).
+    - **One choice of mine:** a long press is also refused, with a message, when your rack already holds a first play, since auto-draw would only switch itself off again.
+    - **Empty pile:** when the pile runs out, auto-draw ends for everyone at once.
+    - **Bots:** they never use it.
+141. **Auto-draw in Pass-and-play and online** *(New after v0.1.14, my choices.)*
+    - **Pass-and-play:** a player in auto-draw doesn't need the phone, so the "Pass to…" cover skips them, and their turns draw by themselves while the phone stays with whoever has it. At the deal, the phone goes to the first player in turn order who will actually play. If everyone is in auto-draw, it goes to the starter. When the phone comes back round to the person already holding it, their turn clock starts without another cover. You can only turn auto-draw on or off for the player whose rack is showing.
+    - **Online:** the host decides and does the drawing, like every other move, so it works even if a guest's phone is slow or asleep. Each phone gets its own auto-draw state (on, and whether it may come back) with its view and shows its own glow. Guests send tap and long-press as a small action that the host accepts at any time.
+    - **Mixed versions:** older guests simply never see the glow. Their turns still auto-draw if they started in it, and the host's rules apply.

@@ -90,7 +90,7 @@ class _PracticeSetupScreenState extends State<PracticeSetupScreen> {
   @override
   Widget build(BuildContext context) {
     return MkScaffold(
-      title: 'Practice vs bots',
+      title: 'Play vs bots',
       actions: [
         const _TestBadge(),
         Padding(

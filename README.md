@@ -8,9 +8,11 @@ An ad-free number-tile game for 2 to 4 friends. Phones connect directly to each 
 
 ## What's in it
 
-- **Practice vs bots**: you against 1 to 3 computer players, each set to Easy, Medium or Hard.
+- **Host a game / Join a game** (the two gold buttons at the top of Home): online play with a 6-character room code: Share sends friends a link that opens the room.
+- **Puzzles**: 400 Easy, 400 Medium and 400 Hard puzzles that work offline. Each gives you a rack and a table, and every rack tile can be played, but only by rearranging the table (freeing a joker, moving a joker along its run, splitting a run, taking a tile from a group, or turning a run tile into a group). After the last puzzle in a difficulty you earn its star, and new puzzles are then made on the phone. Made by `tool/gen_puzzles.dart` (fixed seed) and checked by the solvers in `lib/engine/puzzle.dart`.
+- **Play vs bots**: you against 1 to 3 computer players, each set to Easy, Medium or Hard.
 - **Pass-and-play**: 2 to 4 people on one phone, with a "pass the phone to…" cover screen between turns.
-- **Host a game / Join a game**: online play with a 6-character room code: Share sends friends a link that opens the room.
+- **Opening auto-draw**: until you hold sets worth the first-meld minimum, your turns draw and pass by themselves (the Draw button glows). Tap it to stop, long-press to start again.
 - **House rules with saved presets**: first meld (Off or 3 to 50), starting hand (7 to 20), jokers (0 to 4: red, black, yellow, blue), turn timer (Off/30/60/120 s) and tiles drawn when passing (1 to 3).
 - **The table**: a mahogany table, a crimson velvet rack (10 per row, sliding up for a second row), gold face-down tiles for opponents, flying draw and play animations, and large suit symbols.
 - **Gestures**: drag anywhere. Long-press a rack tile to grab its run or group. Long-press a table set to move it. Double-tap to split a set. Tap a tile then tap a set to auto-place it. An Add row button, an invisible 27-space snap grid with automatic room-making, and a table view that starts zoomed in (3 rows) and zooms out as sets spread. 789 and 777 sort the rack with complete sets first, and Reset puts every tile back where it was at the start of your turn.
@@ -21,9 +23,9 @@ All play, solo modes included, goes through the same rules engine (`lib/engine/`
 
 ## Testing it by yourself
 
-1. **Practice vs bots**: Home → *Practice vs bots*, choose 1 to 3 bots and their difficulty, then *Start practice*.
+1. **Play vs bots**: Home → *Play vs bots*, choose 1 to 3 bots and their difficulty, then *Start practice*.
 2. **Pass-and-play**: Home → *Pass-and-play*, enter 2 to 4 names, then play both sides.
-3. **Test tools**: Home → *Options & house rules* → *Test tools*. Switch them on to get:
+3. **Test tools**: Home → *Options* → *Test tools*. Switch them on to get:
    - **Fixed deal (seed)**: the same number deals the same tiles every time.
    - **Deal me a joker**: guarantees you a joker in your opening hand.
    - **Draw pile size**: Full, 20, 8, 2 or 0, to reach the empty-pile ending quickly.

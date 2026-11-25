@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../engine/rack_sort.dart';
+import 'theme.dart';
 
 enum SeatPos { left, top, right }
 
@@ -39,9 +40,18 @@ class TableGeo {
   /// The corner buttons, all the size of the 777/789 sort buttons ([cornerBtn]): Menu in the
   /// top-left corner, the Round (scores) button just left of the pile, Reset in the
   /// bottom-right corner; and the Draw / End turn button, stretched from the rack to Reset.
+  /// On a tight row (typical phone landscape), Reset moves up so Draw can keep the width
+  /// its longest label needs.
   late final Rect menuRect, roundRect, resetRect, drawRect;
   static const cornerBtn = 46.0;
   static const drawH = 40.0;
+  static const drawResetGap = 6.0;
+
+  /// Draw needs this much width for its icon plus the longest label, at [textScaler].
+  late final double drawMinWidth;
+
+  /// True when Reset sits above Draw so Draw can keep [drawMinWidth].
+  late final bool resetAboveDraw;
   late final double shownCols;
 
   /// The whole columns in view: [firstCol]..[lastCol], centred on the board's middle (where
@@ -65,6 +75,12 @@ class TableGeo {
   /// Height of the pile count text ("48" over "IN PILE") beside the pile.
   final double pileLabelH;
 
+  /// Text scale used to measure the Draw button's labels.
+  final TextScaler textScaler;
+
+  /// When false (puzzles: no Draw button), Reset stays in the bottom-right corner.
+  final bool showDraw;
+
   TableGeo(this.size,
       {required this.boardRows,
       required this.rackEntries,
@@ -74,7 +90,9 @@ class TableGeo {
       this.contentFrom,
       this.contentTo,
       this.sidePlateH = const {},
-      this.pileLabelH = 34})
+      this.pileLabelH = 34,
+      this.textScaler = TextScaler.noScaling,
+      this.showDraw = true})
       : viewRows = (viewRows ?? minViewRows).clamp(minViewRows, math.max(minViewRows, boardRows.toDouble())),
         viewCols = (viewCols ?? minViewCols).clamp(minViewCols, rowWidth.toDouble()) {
     final rackCount = math.max(1, rackEntries.length);
@@ -92,15 +110,48 @@ class TableGeo {
     rackPerRow = rackSlotsPerRow(rackCount);
     rackRows = rackRowsFor(rackCount);
     final rackAvail = w - 2 * ctrlW - 16;
-    final baseTileW = math.min(h * .115, rackAvail / 10.8);
+    var baseTileW = math.min(h * .115, rackAvail / 10.8);
+    double rackWOf(double tileW) => rackPerRow * (tileW * 10 / rackPerRow) + 2 * (tileW * .3);
+
+    // Measure Draw first: a tight landscape row (Reset beside the rack) may not fit the
+    // longest label. If so, Reset will sit above Draw, and the rack may shift left a little
+    // so Draw still gets that measured width.
+    drawMinWidth = GoldButton.drawMinWidth(scaler: textScaler);
+    var rackW = rackWOf(baseTileW);
+    var rackLeft = (w - rackW) / 2;
+    final sideBySideWidth = (w - 10 - cornerBtn) - 8 - (rackLeft + rackW + 8);
+    resetAboveDraw = showDraw && sideBySideWidth < drawMinWidth;
+    if (resetAboveDraw) {
+      final maxRackRight = w - 10 - drawMinWidth - 8;
+      if (rackLeft + rackW > maxRackRight) {
+        final shrinkW = maxRackRight - rackLeft;
+        // Prefer shrinking the rack in place (left edge stays) so the 789/777 buttons and
+        // the "you" plate on the left don't move. Only shift left if shrinking would go too far.
+        if (shrinkW >= rackW * 0.82 && shrinkW >= 80) {
+          baseTileW *= shrinkW / rackW;
+          rackW = rackWOf(baseTileW);
+        } else {
+          const minLeft = 58.0;
+          rackLeft = maxRackRight - rackW;
+          if (rackLeft < minLeft) {
+            rackLeft = minLeft;
+            final maxW = math.max(40.0, maxRackRight - rackLeft);
+            if (maxW < rackW) {
+              baseTileW *= maxW / rackW;
+              rackW = rackWOf(baseTileW);
+              rackLeft = math.max(minLeft, maxRackRight - rackW);
+            }
+          }
+        }
+      }
+    }
     rackTileW = baseTileW * 10 / rackPerRow;
     rackTileH = baseTileW * tileAspect;
     rackRowH = rackTileH + baseTileW * .34;
     rackPadX = baseTileW * .3;
     rackPadTop = baseTileW * .18;
-    final rackW = rackPerRow * rackTileW + 2 * rackPadX;
     final rackH = rackRows * rackRowH + rackPadTop + 2;
-    rackRect = Rect.fromLTWH((w - rackW) / 2, h - rackH, rackW, rackH);
+    rackRect = Rect.fromLTWH(rackLeft, h - rackH, rackW, rackH);
     _rackRects = [
       for (var i = 0; i < rackEntries.length; i++)
         isRackGap(rackEntries[i]) ? null : slotRect(i),
@@ -138,9 +189,17 @@ class TableGeo {
     pileRect = Rect.fromLTWH(w - pw - 62, 6, pw, pw * 1.38);
     menuRect = const Rect.fromLTWH(6, 3, cornerBtn, cornerBtn);
     roundRect = Rect.fromLTWH(pileRect.left - 8 - cornerBtn, 3, cornerBtn, cornerBtn);
-    resetRect = Rect.fromLTWH(w - 10 - cornerBtn, h - 10 - cornerBtn, cornerBtn, cornerBtn);
     final drawLeft = rackRect.right + 8;
-    drawRect = Rect.fromLTRB(drawLeft, resetRect.center.dy - drawH / 2, math.max(drawLeft + 60, resetRect.left - 8), resetRect.center.dy + drawH / 2);
+    final cornerReset = Rect.fromLTWH(w - 10 - cornerBtn, h - 10 - cornerBtn, cornerBtn, cornerBtn);
+    if (!resetAboveDraw) {
+      resetRect = cornerReset;
+      drawRect = Rect.fromLTRB(drawLeft, resetRect.center.dy - drawH / 2, math.max(drawLeft + 60, resetRect.left - 8),
+          resetRect.center.dy + drawH / 2);
+    } else {
+      final drawRight = math.min(w - 10, math.max(drawLeft + drawMinWidth, w - 10));
+      drawRect = Rect.fromLTRB(drawLeft, h - 10 - drawH, drawRight, h - 10);
+      resetRect = Rect.fromLTWH(w - 10 - cornerBtn, drawRect.top - drawResetGap - cornerBtn, cornerBtn, cornerBtn);
+    }
   }
 
   /// Width of the side seat columns for a screen [w] wide.
@@ -218,7 +277,9 @@ class TableGeo {
   /// on the left; both fit in [ctrlH]). The rack in the middle doesn't reach the side columns.
   double backsScale(SeatPos s) {
     final natural = 10 * (backH + 2) + 2;
-    return ((size.height - ctrlH - 4 - backsTop(s)) / natural).clamp(0.3, 1.0);
+    // Keep the old [ctrlH] clearance, and tighten it if Reset has moved up into that band.
+    final controlsTop = math.min(math.min(resetRect.top, drawRect.top), size.height - ctrlH);
+    return ((controlsTop - 4 - backsTop(s)) / natural).clamp(0.3, 1.0);
   }
 
   /// Face-down indicator tile [i] of [n] for a seat: lines of 10 with a gap

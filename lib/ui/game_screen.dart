@@ -1451,6 +1451,8 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
               final g = TableGeo(cons.biggest,
                   sidePlateH: _sidePlateHeights(pv, sideW, base, scaler),
                   pileLabelH: _pileLabelHeight(base, scaler),
+                  textScaler: scaler,
+                  showDraw: _puzzle == null,
                   boardRows: _shown.rowCount,
                   rackEntries: rack,
                   seatCount: pv.seats.length,
@@ -2155,7 +2157,8 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     final my = pv.myTurn;
     final played = _playedThisTurn.isNotEmpty;
     return [
-      // Reset in the bottom-right corner; Draw / End turn stretched from the rack to it.
+      // Reset in the bottom-right corner, or stacked above Draw when the row is too tight
+      // for the Draw button's full label (see TableGeo.resetAboveDraw).
       Positioned.fromRect(
         rect: g.resetRect,
         child: Tooltip(
@@ -2175,8 +2178,8 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
           on: pv.autoDraw,
           child: GoldButton(
             pv.autoDraw ? 'Auto-draw' : (my ? (played ? 'End turn' : (pv.pile > 0 ? 'Draw' : 'Pass')) : 'Waiting...'),
-            // Narrow phones (under 115 px between the rack and Reset): the label alone.
-            icon: g.drawRect.width < 115
+            // Hide the icon only if even the stacked/full-width slot still can't hold it.
+            icon: g.drawRect.width + 0.5 < g.drawMinWidth
                 ? null
                 : (pv.autoDraw
                     ? Icons.autorenew

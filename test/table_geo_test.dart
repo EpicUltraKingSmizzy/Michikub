@@ -6,7 +6,8 @@ const phone = Size(844, 390);
 List<int> tiles(int n) => [for (var i = 0; i < n; i++) i];
 
 void main() {
-  test('the board starts zoomed in: 3 rows and narrower than 27 columns, so tiles are bigger', () {
+  testWidgets('the board starts zoomed in: 3 rows and narrower than 27 columns, so tiles are bigger', (tester) async {
+    await tester.pumpWidget(const SizedBox());
     final start = TableGeo(phone, boardRows: 5, rackEntries: tiles(14), seatCount: 4, viewRows: 3, viewCols: 16);
     final full = TableGeo(phone, boardRows: 5, rackEntries: tiles(14), seatCount: 4, viewRows: 5, viewCols: 27);
     expect(start.cellW, greaterThan(full.cellW * 1.3));
@@ -15,7 +16,8 @@ void main() {
     expect(full.shownCols, 27);
   });
 
-  test('height and width zoom out independently', () {
+  testWidgets('height and width zoom out independently', (tester) async {
+    await tester.pumpWidget(const SizedBox());
     final base = TableGeo(phone, boardRows: 5, rackEntries: tiles(14), seatCount: 4, viewRows: 3, viewCols: 16);
     final taller = TableGeo(phone, boardRows: 5, rackEntries: tiles(14), seatCount: 4, viewRows: 4, viewCols: 16);
     final wider = TableGeo(phone, boardRows: 5, rackEntries: tiles(14), seatCount: 4, viewRows: 3, viewCols: 27);
@@ -26,7 +28,8 @@ void main() {
     expect(wider.shownRows, greaterThanOrEqualTo(3));
   });
 
-  test('the rack is a grid of slots: blanks are a tile wide, drops find the slot under them', () {
+  testWidgets('the rack is a grid of slots: blanks are a tile wide, drops find the slot under them', (tester) async {
+    await tester.pumpWidget(const SizedBox());
     final entries = [1, 2, -1, 3, ...[for (var i = 10; i < 18; i++) i]];
     final g = TableGeo(phone, boardRows: 5, rackEntries: entries, seatCount: 2);
     expect(g.rackRows, 2);
@@ -39,7 +42,8 @@ void main() {
     expect(g.rackSlotAt(g.slotRect(19).center), 19, reason: 'past the last entry');
   });
 
-  test('the columns in view are centred on the board (where tidying gathers sets)', () {
+  testWidgets('the columns in view are centred on the board (where tidying gathers sets)', (tester) async {
+    await tester.pumpWidget(const SizedBox());
     final g = TableGeo(phone, boardRows: 5, rackEntries: tiles(14), seatCount: 4, viewRows: 3, viewCols: 16);
     expect(g.firstCol + g.lastCol, closeTo(26, 1), reason: 'centred on column 13');
     // The middle column sits in the middle of the board area.
@@ -49,7 +53,8 @@ void main() {
     expect(TableGeo.colsToShow(0, 26), 27);
   });
 
-  test('v0.1.7: no spare columns, and off-centre sets shift the window instead of zooming out', () {
+  testWidgets('v0.1.7: no spare columns, and off-centre sets shift the window instead of zooming out', (tester) async {
+    await tester.pumpWidget(const SizedBox());
     // Only the sets' own span counts.
     expect(TableGeo.colsToShow(2, 14), 16);
     expect(TableGeo.colsToShow(3, 22), 20);
@@ -65,7 +70,8 @@ void main() {
     expect(mid.firstCol, centred.firstCol);
   });
 
-  test('v0.1.7: the board reaches closer to the side seats', () {
+  testWidgets('v0.1.7: the board reaches closer to the side seats', (tester) async {
+    await tester.pumpWidget(const SizedBox());
     final g = TableGeo(const Size(873, 393), boardRows: 5, rackEntries: tiles(14), seatCount: 4);
     expect(g.sideW, lessThanOrEqualTo(62));
     expect(g.boardRect.left, g.sideW);

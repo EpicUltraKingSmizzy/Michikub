@@ -154,6 +154,38 @@ class GoldButton extends StatelessWidget {
   final VoidCallback? onLongPress;
   const GoldButton(this.label,
       {super.key, this.icon, this.onPressed, this.compact = false, this.crimson = false, this.sound = true, this.onLongPress});
+
+  static const compactFontSize = 13.0;
+  static const compactPadH = 14.0;
+  static const compactIconSize = 16.0;
+  static const compactIconGap = 6.0;
+
+  /// Every label the in-game Draw button can show.
+  static const drawLabels = ['Auto-draw', 'End turn', 'Draw', 'Pass', 'Waiting...'];
+
+  static TextStyle compactStyle({Color color = const Color(0xFF2A1404)}) =>
+      MK.body(compactFontSize, color: color, weight: FontWeight.w700);
+
+  /// Width of a compact button showing [label], measured the way the button paints it.
+  static double compactWidth(String label, {bool icon = true, TextScaler scaler = TextScaler.noScaling}) {
+    final tp = TextPainter(
+      text: TextSpan(text: label, style: compactStyle()),
+      maxLines: 1,
+      textDirection: TextDirection.ltr,
+      textScaler: scaler,
+    )..layout();
+    return compactPadH * 2 + (icon ? compactIconSize + compactIconGap : 0) + tp.width;
+  }
+
+  /// The widest compact Draw button (icon plus the longest label) at [scaler].
+  static double drawMinWidth({TextScaler scaler = TextScaler.noScaling, bool icon = true}) {
+    var w = 0.0;
+    for (final l in drawLabels) {
+      final n = compactWidth(l, icon: icon, scaler: scaler);
+      if (n > w) w = n;
+    }
+    return w;
+  }
   @override
   Widget build(BuildContext context) {
     final enabled = onPressed != null || onLongPress != null;
@@ -172,7 +204,7 @@ class GoldButton extends StatelessWidget {
                 },
           onLongPress: onLongPress,
           child: Ink(
-            padding: EdgeInsets.symmetric(horizontal: compact ? 14 : 22, vertical: compact ? 8 : 12),
+            padding: EdgeInsets.symmetric(horizontal: compact ? compactPadH : 22, vertical: compact ? 8 : 12),
             decoration: BoxDecoration(
               gradient: crimson ? MK.lipGradient : MK.goldGradient,
               borderRadius: BorderRadius.circular(40),
@@ -183,10 +215,10 @@ class GoldButton extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center, // When stretched (the in-game Draw button).
               children: [
-                if (icon != null) ...[Icon(icon, size: compact ? 16 : 20, color: fg), SizedBox(width: compact ? 6 : 8)],
+                if (icon != null) ...[Icon(icon, size: compact ? compactIconSize : 20, color: fg), SizedBox(width: compact ? compactIconGap : 8)],
                 Flexible(
                     child: Text(label,
-                        maxLines: 1, softWrap: false, overflow: TextOverflow.fade, style: MK.body(compact ? 13 : 16, color: fg, weight: FontWeight.w700))),
+                        maxLines: 1, softWrap: false, overflow: TextOverflow.fade, style: compact ? compactStyle(color: fg) : MK.body(16, color: fg, weight: FontWeight.w700))),
               ],
             ),
           ),

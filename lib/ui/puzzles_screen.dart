@@ -123,12 +123,14 @@ class PuzzleLevelButton extends StatelessWidget {
                   width: width * fraction,
                   child: const DecoratedBox(key: ValueKey('levelFill'), decoration: BoxDecoration(gradient: MK.goldGradient)),
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 22),
-                  child: Row(children: [
-                    Expanded(child: Text(label, style: text)),
-                    Text('$solved/$total', key: const ValueKey('levelProgress'), style: text.copyWith(fontSize: 16)),
-                  ]),
+                Positioned.fill(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 22),
+                    child: Row(children: [
+                      Expanded(child: Text(label, style: text)),
+                      Text('$solved/$total', key: const ValueKey('levelProgress'), style: text.copyWith(fontSize: 16)),
+                    ]),
+                  ),
                 ),
               ]),
             ),

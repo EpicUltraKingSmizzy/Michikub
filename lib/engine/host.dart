@@ -41,6 +41,7 @@ sealed class GameAction {
         'commit' => CommitAction(Board.fromJson(j['board'] as List)),
         'draw' => const DrawAction(),
         'ready' => const ReadyAction(),
+        'auto' => AutoDrawAction(j['on'] == true),
         _ => throw FormatException('unknown action ${j['a']}'),
       };
 }
@@ -74,6 +75,80 @@ class ReadyAction extends GameAction {
   const ReadyAction();
   @override
   Map<String, dynamic> toJson() => {'a': 'ready'};
+}
+
+/// Opening auto-draw on or off for the player who sends it (any time, not only on their turn).
+class AutoDrawAction extends GameAction {
+  final bool on;
+  const AutoDrawAction(this.on);
+  @override
+  Map<String, dynamic> toJson() => {'a': 'auto', 'on': on};
+}
+
+/// Does [rack] hold one or more sets (disjoint) worth at least [minPoints] together? This is
+/// the first play opening auto-draw waits for.
+bool hasOpeningPlay(List<int> rack, int minPoints) {
+  if (minPoints <= 0) return true;
+  var nodes = 0;
+  final seen = <String>{};
+  bool dfs(List<int> left, int pts) {
+    if (pts >= minPoints) return true;
+    if (++nodes > 20000) return false;
+    // The same tiles left with the same points: already tried (sets picked in another order).
+    if (!seen.add('$pts:${([for (final t in left) isJoker(t) ? 999 : t % 52]..sort()).join(',')}')) return false;
+    // Upper bound: every tile left counted at 13 can't reach it.
+    if (pts + left.length * 13 < minPoints) return false;
+    final cands = candidateMeldsAll(left)..sort((a, b) => meldPoints(b) - meldPoints(a));
+    for (final m in cands) {
+      final rest = List.of(left);
+      for (final t in m) {
+        rest.remove(t);
+      }
+      if (dfs(rest, pts + meldPoints(m))) return true;
+    }
+    return false;
+  }
+
+  return dfs(List.of(rack), 0);
+}
+
+/// Every run and group in [rack] that starts from its lowest kind of tile (enough for an
+/// exhaustive search: each set is found from one of its tiles).
+List<List<int>> candidateMeldsAll(List<int> rack) {
+  final jokers = rack.where(isJoker).toList();
+  final byKind = <int, int>{};
+  for (final t in rack) {
+    if (!isJoker(t)) byKind.putIfAbsent(tileColor(t).index * 13 + tileNumber(t) - 1, () => t);
+  }
+  final out = <List<int>>[];
+  for (var c = 0; c < 4; c++) {
+    for (var s = 1; s <= 11; s++) {
+      final tiles = <int>[];
+      var j = 0, real = 0;
+      for (var n = s; n <= 13; n++) {
+        final t = byKind[c * 13 + n - 1];
+        if (t != null) {
+          tiles.add(t);
+          real++;
+        } else if (j < jokers.length) {
+          tiles.add(jokers[j++]);
+        } else {
+          break;
+        }
+        if (tiles.length >= 3 && real > 0) out.add(List.of(tiles));
+      }
+    }
+  }
+  for (var n = 1; n <= 13; n++) {
+    final present = [for (var c = 0; c < 4; c++) if (byKind[c * 13 + n - 1] != null) byKind[c * 13 + n - 1]!];
+    for (var mask = 1; mask < (1 << present.length); mask++) {
+      final chosen = [for (var i = 0; i < present.length; i++) if (mask & (1 << i) != 0) present[i]];
+      for (var j = 0; j <= jokers.length && chosen.length + j <= 4; j++) {
+        if (chosen.length + j >= 3) out.add([...chosen, ...jokers.take(j)]);
+      }
+    }
+  }
+  return out.where(isValidMeld).toList();
 }
 
 class ActionResult {
@@ -166,6 +241,11 @@ class PlayerView {
   final String? notice;
   final int noticeSeq;
 
+  /// Opening auto-draw: on for this player (their Draw button glows), and whether they may
+  /// turn it back on (first-meld rule on, no first play yet, tiles left in the pile).
+  final bool autoDraw;
+  final bool autoDrawAllowed;
+
   const PlayerView({
     required this.me,
     required this.seats,
@@ -186,6 +266,8 @@ class PlayerView {
     required this.drawCount,
     required this.notice,
     required this.noticeSeq,
+    this.autoDraw = false,
+    this.autoDrawAllowed = false,
   });
 
   String get currentId => seats[current].info.id;
@@ -212,6 +294,8 @@ class PlayerView {
         'drawCount': drawCount,
         'notice': notice,
         'noticeSeq': noticeSeq,
+        'autoDraw': autoDraw,
+        'autoAllowed': autoDrawAllowed,
       };
 
   factory PlayerView.fromJson(Map<String, dynamic> j) => PlayerView(
@@ -234,6 +318,8 @@ class PlayerView {
         drawCount: j['drawCount'] as int,
         notice: j['notice'] as String?,
         noticeSeq: j['noticeSeq'] as int? ?? 0,
+        autoDraw: j['autoDraw'] as bool? ?? false,
+        autoDrawAllowed: j['autoAllowed'] as bool? ?? false,
       );
 }
 
@@ -337,6 +423,21 @@ class GameHost {
   String? notice;
   int noticeSeq = 0;
 
+  /// Opening auto-draw: the players (people, not bots) it's on for. Each turn of theirs the
+  /// game draws and passes for them, until their rack holds a first play worth the minimum.
+  final Set<String> autoDraw = {};
+
+  /// How long an auto-draw turn waits before drawing (the first turn of a round also waits
+  /// for the deal).
+  static int autoDrawDelayMs = 1200;
+
+  /// Tests: opening auto-draw is off for tests that aren't about it
+  /// (test/flutter_test_config.dart); the auto-draw tests turn it back on.
+  static bool openingAutoDraw = true;
+  static int autoDrawAfterDealMs = 2600;
+  Timer? _autoTimer;
+  bool _firstTurnOfRound = false;
+
   DateTime? _deadline;
   Timer? _timer;
   int? _pausedMsLeft;
@@ -404,7 +505,15 @@ class GameHost {
     if (test.enabled && test.pileLimit != null && test.pileLimit! < pile.length) {
       pile = pile.sublist(0, test.pileLimit!);
     }
+    // Everyone (people only) starts in auto-draw, unless their rack already holds a first play.
+    autoDraw.clear();
+    if (openingAutoDraw && rules.firstMeld > 0 && pile.isNotEmpty) {
+      for (final p in players) {
+        if (p.kind != SeatKind.bot && !hasOpeningPlay(racks[p.id]!, rules.firstMeld)) autoDraw.add(p.id);
+      }
+    }
     current = (firstStarter! + round - 1) % players.length;
+    _firstTurnOfRound = true;
     _beginTurn();
   }
 
@@ -415,7 +524,50 @@ class GameHost {
     _timer?.cancel();
     _deadline = null;
     if (!waitForReady || currentPlayer.kind != SeatKind.human) _startClock();
+    final afterDeal = _firstTurnOfRound;
+    _firstTurnOfRound = false;
+    _scheduleAutoDraw(afterDeal);
     _emit();
+  }
+
+  /// May [id] have opening auto-draw on? Only with the first-meld rule, before their first
+  /// play, while the pile has tiles.
+  bool autoDrawAllowed(String id) => rules.firstMeld > 0 && !melded.contains(id) && pile.isNotEmpty && result == null;
+
+  /// Pass-and-play: the current person's clock is waiting for them to take the phone.
+  bool get waitingForReady =>
+      waitForReady && currentPlayer.kind == SeatKind.human && turnSeconds > 0 && _deadline == null && _pausedMsLeft == null && result == null;
+
+  /// Seats whose turns auto-draw is playing right now (Pass-and-play doesn't hand them the phone).
+  bool isAutoDrawing(String id) => autoDraw.contains(id) && autoDrawAllowed(id);
+
+  /// The current player is in auto-draw: stop if they now have a first play (or it's no longer
+  /// allowed), otherwise draw and pass for them after a moment.
+  void _scheduleAutoDraw(bool afterDeal) {
+    _autoTimer?.cancel();
+    _autoTimer = null;
+    if (result != null) return;
+    final p = currentPlayer.id;
+    if (!autoDraw.contains(p)) return;
+    if (!autoDrawAllowed(p)) {
+      autoDraw.remove(p);
+      return;
+    }
+    if (hasOpeningPlay(racks[p]!, rules.firstMeld)) {
+      autoDraw.remove(p);
+      return;
+    }
+    final seq = turnSeq;
+    _autoTimer = Timer(Duration(milliseconds: afterDeal ? autoDrawAfterDealMs : autoDrawDelayMs), () {
+      _autoTimer = null;
+      if (seq != turnSeq || result != null || currentPlayer.id != p || !autoDraw.contains(p)) return;
+      if (!autoDrawAllowed(p)) {
+        autoDraw.remove(p);
+        _emit();
+        return;
+      }
+      _draw(p);
+    });
   }
 
   void _startClock() {
@@ -458,6 +610,7 @@ class GameHost {
 
   void dispose() {
     _timer?.cancel();
+    _autoTimer?.cancel();
     _changes.close();
   }
 
@@ -505,6 +658,7 @@ class GameHost {
   }
 
   ActionResult handle(String playerId, GameAction a) {
+    if (a is AutoDrawAction) return _setAutoDraw(playerId, a.on);
     if (result != null) return const ActionResult.fail('The round is over.');
     if (playerId != currentPlayer.id) return const ActionResult.fail('It is not your turn.');
     switch (a) {
@@ -541,7 +695,35 @@ class GameHost {
         if (_deadline == null) _startClock();
         _emit();
         return const ActionResult.ok();
+      case AutoDrawAction():
+        return _setAutoDraw(playerId, a.on);
     }
+  }
+
+  /// Tap on the glowing Draw button: auto-draw off. Long press: back on, while allowed.
+  ActionResult _setAutoDraw(String p, bool on) {
+    if (!players.any((x) => x.id == p)) return const ActionResult.fail('unknown player');
+    if (!on) {
+      if (autoDraw.remove(p)) {
+        if (currentPlayer.id == p) {
+          _autoTimer?.cancel();
+          _autoTimer = null;
+        }
+        _emit();
+      }
+      return const ActionResult.ok();
+    }
+    if (!autoDrawAllowed(p)) {
+      return ActionResult.fail(rules.firstMeld <= 0
+          ? 'Auto-draw is off in games without a first-meld minimum.'
+          : (melded.contains(p) ? 'Auto-draw is only for before your first play.' : 'No tiles left to draw.'));
+    }
+    if (autoDraw.contains(p)) return const ActionResult.ok();
+    if (hasOpeningPlay(racks[p]!, rules.firstMeld)) return const ActionResult.fail('You already have a first play.');
+    autoDraw.add(p);
+    if (currentPlayer.id == p && result == null) _scheduleAutoDraw(false);
+    _emit();
+    return const ActionResult.ok();
   }
 
   void _commit(String p, Board proposed) {
@@ -551,6 +733,7 @@ class GameHost {
     board = Layout.tidy(proposed);
     preview = null;
     melded.add(p);
+    autoDraw.remove(p);
     _passesWithEmptyPile = 0;
     if (racks[p]!.isEmpty) {
       _endRound(p, 'out');
@@ -569,6 +752,8 @@ class GameHost {
       drawPlayer = p;
       drawCount = n;
       _passesWithEmptyPile = 0;
+      // The pile ran out: auto-draw ends for everyone (and can't come back this round).
+      if (pile.isEmpty) autoDraw.clear();
     } else {
       _passesWithEmptyPile++;
       if (_passesWithEmptyPile >= players.length) {
@@ -596,6 +781,8 @@ class GameHost {
   /// the winner (lowest rack) gains the others' values minus their own.
   void _endRound(String winner, String reason) {
     _timer?.cancel();
+    _autoTimer?.cancel();
+    autoDraw.clear();
     _deadline = null;
     final values = {for (final p in players) p.id: _rackValue(p.id)};
     final scores = <String, int>{};
@@ -651,6 +838,7 @@ class GameHost {
   /// Empties the pile.
   void debugEmptyPile() {
     pile = [];
+    autoDraw.clear();
     _emit();
   }
 
@@ -712,6 +900,8 @@ class GameHost {
       drawCount: drawCount,
       notice: notice,
       noticeSeq: noticeSeq,
+      autoDraw: autoDraw.contains(me),
+      autoDrawAllowed: autoDrawAllowed(me),
     );
   }
 }

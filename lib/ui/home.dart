@@ -7,6 +7,7 @@ import 'fullscreen_button.dart';
 
 import 'online_screens.dart';
 import 'options_screen.dart';
+import 'puzzles_screen.dart';
 import 'setup_screens.dart';
 import 'theme.dart';
 
@@ -71,7 +72,8 @@ class HomeScreen extends StatelessWidget {
   /// Shortest height the menu scales down to before it scrolls instead.
   static const double _minFitHeight = 180;
 
-  /// The original layout (the apps); the web build shrink-wraps the same children.
+  /// The menu (the same on the apps and the web): Host and Join on top in gold, then Puzzles,
+  /// Play vs bots, Pass-and-play and Options. The web build shrink-wraps the same children.
   Row _menu(void Function(Widget) go) => Row(
     mainAxisAlignment: MainAxisAlignment.center,
     children: [
@@ -84,15 +86,17 @@ class HomeScreen extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              GoldButton('Practice vs bots', icon: Icons.smart_toy_outlined, onPressed: () => go(const PracticeSetupScreen())),
+              GoldButton('Host a game', icon: Icons.wifi_tethering, onPressed: () => go(const HostLobbyScreen())),
               const SizedBox(height: 10),
-              GoldButton('Pass-and-play', icon: Icons.people_alt_outlined, onPressed: () => go(const HotSeatSetupScreen())),
+              GoldButton('Join a game', icon: Icons.login, onPressed: () => go(const JoinScreen())),
               const SizedBox(height: 10),
-              GoldButton('Host a game', icon: Icons.wifi_tethering, crimson: true, onPressed: () => go(const HostLobbyScreen())),
+              GoldButton('Puzzles', icon: Icons.extension_outlined, crimson: true, onPressed: () => go(const PuzzlesScreen())),
               const SizedBox(height: 10),
-              GoldButton('Join a game', icon: Icons.login, crimson: true, onPressed: () => go(const JoinScreen())),
+              GoldButton('Play vs bots', icon: Icons.smart_toy_outlined, crimson: true, onPressed: () => go(const PracticeSetupScreen())),
               const SizedBox(height: 10),
-              GoldButton('Options & house rules', icon: Icons.tune, crimson: true, onPressed: () => go(const OptionsScreen())),
+              GoldButton('Pass-and-play', icon: Icons.people_alt_outlined, crimson: true, onPressed: () => go(const HotSeatSetupScreen())),
+              const SizedBox(height: 10),
+              GoldButton('Options', icon: Icons.tune, crimson: true, onPressed: () => go(const OptionsScreen())),
             ],
           ),
         ),

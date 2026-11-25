@@ -35,6 +35,7 @@ flutter:
     - assets/bots/
     - assets/avatars/
     - assets/sfx/
+    - assets/puzzles/
     - assets/icon/michikub_icon_1024.png
     - assets/fonts/SpaceGrotesk-OFL.txt
   fonts:

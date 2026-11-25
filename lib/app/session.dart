@@ -105,8 +105,8 @@ class LocalSession extends GameSession {
     host.startRound();
     _seenDrawSeq = host.drawSeq;
     if (hotSeat) {
-      _seat = host.currentPlayer.id;
-      _cover = host.currentPlayer.name;
+      _seat = _firstSeat();
+      _cover = host.players.firstWhere((p) => p.id == _seat).name;
     }
     _refresh();
     bots.start();
@@ -114,7 +114,9 @@ class LocalSession extends GameSession {
 
   void _refresh() {
     final cur = host.currentPlayer;
-    if (hotSeat && host.result == null && cur.kind == SeatKind.human && cur.id != _seat && _revealTimer == null) {
+    // Players in opening auto-draw don't need the phone: their turns draw and pass by themselves.
+    if (hotSeat && host.result == null && cur.kind == SeatKind.human && cur.id != _seat && _revealTimer == null &&
+        !host.isAutoDrawing(cur.id)) {
       // The player handing the phone on just drew (Draw or a timeout): show them the new
       // tile(s) in their rack first, then the cover.
       final drew = host.drawPlayer == _seat && host.drawSeq != _seenDrawSeq && _view != null;
@@ -133,6 +135,13 @@ class LocalSession extends GameSession {
       }
     }
     _seenDrawSeq = host.drawSeq;
+    // The phone stayed with this person while others auto-drew: their turn is here and the
+    // cover is long gone, so their clock starts now.
+    if (hotSeat && _cover == null && cur.id == _seat && host.waitingForReady) {
+      scheduleMicrotask(() {
+        if (_cover == null && host.currentPlayer.id == _seat && host.waitingForReady) host.handle(_seat, const ReadyAction());
+      });
+    }
     _view = host.viewFor(_seat);
     notifyListeners();
   }
@@ -185,10 +194,21 @@ class LocalSession extends GameSession {
     host.startRound();
     _seenDrawSeq = host.drawSeq;
     if (hotSeat) {
-      _seat = host.currentPlayer.id;
-      _cover = host.currentPlayer.name;
+      _seat = _firstSeat();
+      _cover = host.players.firstWhere((p) => p.id == _seat).name;
     }
     _refresh();
+  }
+
+  /// Pass-and-play at the deal: the first person (in turn order) who will actually play, so
+  /// the phone skips players in opening auto-draw. Everyone in auto-draw: the starter.
+  String _firstSeat() {
+    final n = host.players.length;
+    for (var i = 0; i < n; i++) {
+      final p = host.players[(host.current + i) % n];
+      if (p.kind == SeatKind.human && !host.isAutoDrawing(p.id)) return p.id;
+    }
+    return host.currentPlayer.id;
   }
 
   @override

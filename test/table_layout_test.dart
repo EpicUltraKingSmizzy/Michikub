@@ -136,7 +136,7 @@ void main() {
     final fs = tester.getRect(find.byKey(const ValueKey('fullscreen')));
     expect(fs.right, 844 - 6);
     expect(fs.top, 6);
-    for (final t in ['Practice vs bots', 'Options & house rules', 'Michikub']) {
+    for (final t in ['Play vs bots', 'Options', 'Michikub']) {
       expect(tester.getRect(find.text(t)).overlaps(fs), false, reason: t);
     }
     await tester.pumpWidget(const MaterialApp(home: HomeScreen(fitToScreen: false)));

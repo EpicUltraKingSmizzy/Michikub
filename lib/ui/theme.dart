@@ -149,10 +149,14 @@ class GoldButton extends StatelessWidget {
 
   /// Plays the menu click (off for buttons with their own sound, like Draw).
   final bool sound;
-  const GoldButton(this.label, {super.key, this.icon, this.onPressed, this.compact = false, this.crimson = false, this.sound = true});
+
+  /// Long press (the in-game Draw button turns opening auto-draw back on with it).
+  final VoidCallback? onLongPress;
+  const GoldButton(this.label,
+      {super.key, this.icon, this.onPressed, this.compact = false, this.crimson = false, this.sound = true, this.onLongPress});
   @override
   Widget build(BuildContext context) {
-    final enabled = onPressed != null;
+    final enabled = onPressed != null || onLongPress != null;
     final fg = crimson ? MK.creamText : const Color(0xFF2A1404);
     return Opacity(
       opacity: enabled ? 1 : .45,
@@ -166,6 +170,7 @@ class GoldButton extends StatelessWidget {
                   if (sound) playSfx(Sfx.click);
                   onPressed!();
                 },
+          onLongPress: onLongPress,
           child: Ink(
             padding: EdgeInsets.symmetric(horizontal: compact ? 14 : 22, vertical: compact ? 8 : 12),
             decoration: BoxDecoration(

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:michikub/ui/home.dart';
 
-const labels = ['Practice vs bots', 'Pass-and-play', 'Host a game', 'Join a game', 'Options & house rules'];
+const labels = ['Host a game', 'Join a game', 'Puzzles', 'Play vs bots', 'Pass-and-play', 'Options'];
 const tagline = 'Play with friends. No ads, no subscription.';
 
 /// The test font is wider than the app's, so the button labels overflow their rows here (on
@@ -29,7 +29,7 @@ void main() {
         final r = tester.getRect(find.text(t));
         expect(r.top >= 0 && r.bottom <= size.height, true, reason: '$t at $r');
       }
-      final panel = tester.getRect(find.ancestor(of: find.text('Practice vs bots'), matching: find.byType(SizedBox)).last);
+      final panel = tester.getRect(find.ancestor(of: find.text('Play vs bots'), matching: find.byType(SizedBox)).last);
       expect(panel.left >= 0 && panel.right <= size.width && panel.bottom <= size.height, true, reason: 'menu panel at $panel');
       expect(find.byType(SingleChildScrollView), findsNothing);
       tester.view.reset();

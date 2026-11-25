@@ -9,6 +9,7 @@ import '../app/fullscreen.dart';
 import '../app/keep_alive.dart';
 import '../app/sfx.dart';
 import '../app/prefs.dart';
+import '../app/puzzles.dart';
 import '../app/session.dart';
 import '../engine/board.dart';
 import '../engine/host.dart';
@@ -69,6 +70,12 @@ class TableTuning {
   /// How long the "`Name` starts" banner shows at the start of each round.
   static const starterBannerMs = 2200;
 
+  /// Puzzles: the pause after the success sound, then the tidy-up (every tile flies back to
+  /// the deck, one after another), before the next puzzle is dealt.
+  static const puzzlePauseMs = 1000;
+  static const puzzleBackMs = 520;
+  static const puzzleBackStepMs = 28;
+
 }
 
 enum _Src { pile, seat }
@@ -122,6 +129,16 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
 
   PlayerView? v;
   int _turnSeq = -1;
+
+  /// Puzzles mode (null in games).
+  PuzzleSession? get _puzzle {
+    final ss = s;
+    return ss is PuzzleSession ? ss : null;
+  }
+
+  /// The puzzle round whose win has been handled (sound, pause, tidy-up).
+  int _solvedRound = -1;
+  Timer? _puzzleTimer;
   Board working = Board.empty();
   final List<Board> _history = [];
   final Map<String, List<int>> _rackOrders = {};
@@ -249,6 +266,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     _toastTimer?.cancel();
     _bannerTimer?.cancel();
     _dealTimer?.cancel();
+    _puzzleTimer?.cancel();
     super.dispose();
   }
 
@@ -261,6 +279,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   ///   for the wash; after an opponent's draw it comes just after the draw sound.
   /// Opponents' turns make no sound of their own (only their draws do).
   void _turnSounds(PlayerView? old, PlayerView nv, bool turnChanged, bool dealtNow) {
+    if (_puzzle != null) return; // Puzzles: the deal and the success sound only.
     final drewNow = nv.drawSeq != _drawSeq && nv.drawPlayer != null;
     if (old != null && old.myTurn && turnChanged && old.round == nv.round) {
       final iDrew = drewNow && nv.drawPlayer == old.me;
@@ -458,6 +477,18 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       _tilesAtMyTurnEnd[old.me] = (round: nv.round, tiles: nv.board.allTiles.toSet());
     }
     if (nv.result == null) _resultsHidden = false;
+    final pz = _puzzle;
+    if (pz != null && pz.phase == PuzzlePhase.solved && _solvedRound != nv.round) {
+      // Solved: the success sound, a moment to enjoy it, then the tidy-up and the next deal.
+      _solvedRound = nv.round;
+      playSfx(Sfx.turnEnd);
+      _puzzleTimer?.cancel();
+      _puzzleTimer = Timer(const Duration(milliseconds: TableTuning.puzzlePauseMs), _puzzleTidyUp);
+    }
+    if (pz?.error != null) {
+      _showToast(pz!.error!);
+      pz.error = null;
+    }
     _deadline = nv.msLeft == null ? null : DateTime.now().add(Duration(milliseconds: nv.msLeft!));
     _clockRunning = nv.clockRunning;
     v = nv;
@@ -471,6 +502,10 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   void _deal(PlayerView nv, List<int> rack) {
     if (!TableTuning.dealAnimation) return;
     if (WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations) return;
+    if (_puzzle != null) {
+      _dealPuzzle(nv, rack);
+      return;
+    }
     final mine = [for (final t in rack) if (!isRackGap(t)) t];
     final seats = nv.seats;
     final counts = [for (final sv in seats) sv.info.id == nv.me ? mine.length : sv.count];
@@ -513,6 +548,116 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       if (mounted) setState(() => _dealing = false);
     });
   }
+
+  /// Puzzles: the table's tiles, then the rack's, fly from the deck one after another.
+  void _dealPuzzle(PlayerView nv, List<int> rack) {
+    final tiles = [...nv.board.allTiles, for (final t in rack) if (!isRackGap(t)) t];
+    if (tiles.isEmpty) return;
+    final step = tiles.length <= 1 ? 0 : (TableTuning.dealSpanMs - TableTuning.dealFlyMs) / (tiles.length - 1);
+    for (var i = 0; i < tiles.length; i++) {
+      _spawns[tiles[i]] = _Spawn(_Src.pile, null, (i * step).round(), TableTuning.dealFlyMs);
+    }
+    _dealing = true;
+    _dealTimer?.cancel();
+    _dealTimer = Timer(const Duration(milliseconds: TableTuning.dealSpanMs), () {
+      if (mounted) setState(() => _dealing = false);
+    });
+  }
+
+  /// Puzzles, after a win: every tile flies back from the table and the rack into the deck,
+  /// then the next puzzle is dealt.
+  void _puzzleTidyUp() {
+    final pz = _puzzle;
+    final pv = v;
+    if (!mounted || pz == null || pv == null) return;
+    final g = _geo;
+    var lastMs = 0;
+    final animate = g != null &&
+        TableTuning.dealAnimation &&
+        !WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations;
+    if (animate) {
+      final from = <(int, Rect)>[];
+      final b = working;
+      for (var r = 0; r < b.rowCount; r++) {
+        for (var c = 0; c < Board.width; c++) {
+          if (b.rows[r][c] >= 0) from.add((b.rows[r][c], g.cellRect(r, c)));
+        }
+      }
+      final order = _order;
+      for (var i = 0; i < order.length; i++) {
+        if (!isRackGap(order[i])) from.add((order[i], g.rackSlot(i)));
+      }
+      for (var i = 0; i < from.length; i++) {
+        final delay = i * TableTuning.puzzleBackStepMs;
+        _flights.add(_BackFlight(pv.me, from[i].$2, g.pileRect, from[i].$1, delay, TableTuning.puzzleBackMs));
+        lastMs = delay + TableTuning.puzzleBackMs;
+      }
+      playSfx(Sfx.puzzleClear);
+    }
+    _selected.clear();
+    pz.clearTable();
+    _puzzleTimer = Timer(Duration(milliseconds: lastMs + 200), () {
+      if (mounted) _puzzle?.nextPuzzle();
+    });
+  }
+
+  /// Puzzles: the list of beaten puzzles in this difficulty; picking one replays it.
+  Future<void> _openBeatenList() async {
+    final pz = _puzzle;
+    if (pz == null) return;
+    final list = pz.beaten;
+    final pick = await showDialog<BeatenPuzzle>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: 360, maxHeight: MediaQuery.sizeOf(ctx).height * .85),
+          child: MkPanel(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Text('${puzzleLevelName(pz.level)}: beaten', style: MK.title(20), textAlign: TextAlign.center),
+              const SizedBox(height: 6),
+              if (list.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text('None yet. Solve this one!', textAlign: TextAlign.center, style: MK.body(14, color: MK.gold)),
+                )
+              else
+                Flexible(
+                  child: ListView.builder(
+                    key: const ValueKey('beatenList'),
+                    shrinkWrap: true,
+                    itemCount: list.length,
+                    itemBuilder: (_, i) => ListTile(
+                      dense: true,
+                      visualDensity: VisualDensity.compact,
+                      leading: const Icon(Icons.check_circle, color: MK.gold, size: 20),
+                      title: Text('#${list[i].number}', style: MK.body(15, weight: FontWeight.w700)),
+                      trailing: Text('Replay', style: MK.body(13, color: MK.goldLight)),
+                      onTap: () => Navigator.pop(ctx, list[i]),
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 8),
+              GoldButton('Close', compact: true, crimson: true, onPressed: () => Navigator.pop(ctx)),
+            ]),
+          ),
+        ),
+      ),
+    );
+    if (pick != null && mounted && pz.phase == PuzzlePhase.playing) pz.open(pick);
+  }
+
+  List<Widget> _puzzleTop(TableGeo g, PuzzleSession pz) => [
+        Positioned(
+          top: 6,
+          left: 0,
+          right: 0,
+          child: Center(
+            child: GoldButton('${puzzleLevelName(pz.level)}  #${pz.number}',
+                key: const ValueKey('puzzleNumber'), icon: Icons.format_list_numbered, compact: true, onPressed: _openBeatenList),
+          ),
+        ),
+      ];
 
   void _flyBacks(PlayerView nv, String who, int n) {
     final g = _geo;
@@ -1199,7 +1344,8 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
               child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 Text('Menu', style: MK.title(22), textAlign: TextAlign.center),
                 const SizedBox(height: 4),
-                Text(v?.rules.summary() ?? '', style: MK.body(12, color: MK.gold), textAlign: TextAlign.center),
+                Text(_puzzle != null ? '${puzzleLevelName(_puzzle!.level)} puzzle #${_puzzle!.number}' : (v?.rules.summary() ?? ''),
+                    style: MK.body(12, color: MK.gold), textAlign: TextAlign.center),
                 const SizedBox(height: 12),
                 GoldButton('Resume', icon: Icons.play_arrow, onPressed: () => Navigator.pop(ctx)),
                 if (Fullscreen.supported) ...[
@@ -1341,6 +1487,9 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                       ms: f.ms,
                       onDone: () => setState(() => _flights.remove(f)),
                     ),
+                  // Puzzles: solved, tidying up: hands off until the next deal.
+                  if (_puzzle != null && _puzzle!.phase != PuzzlePhase.playing)
+                    const Positioned.fill(child: AbsorbPointer(key: ValueKey('puzzleBlock'), child: SizedBox.expand())),
                   // The deal: the table ignores input until every tile has landed.
                   if (_dealing) const Positioned.fill(child: AbsorbPointer(key: ValueKey('dealBlock'), child: SizedBox.expand())),
                   ..._chatBubbles(g, pv),
@@ -1858,6 +2007,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
             child: RingButton(key: const ValueKey('menuButton'), size: TableGeo.cornerBtn, icon: Icons.menu, onPressed: _openMenu),
           ),
         ),
+        if (_puzzle != null) ..._puzzleTop(g, _puzzle!) else
         Positioned.fromRect(
           rect: g.roundRect,
           child: Tooltip(
@@ -1957,7 +2107,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
             Stack(clipBehavior: Clip.none, children: [
               GestureDetector(
                 key: const ValueKey('myAvatar'),
-                onTap: () => setState(() => _chatOpen = true),
+                onTap: _puzzle != null ? null : () => setState(() => _chatOpen = true),
                 child: _avatar(me, a, current: my),
               ),
               _countBadge(_rackShown.where((t) => !isRackGap(t)).length, key: const ValueKey('myCount')),
@@ -1992,10 +2142,11 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
           ]),
         ),
         const SizedBox(width: 6),
-        Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('${pv.pile}', style: MK.body(17, weight: FontWeight.w700)),
-          Text('IN PILE', style: MK.body(8, color: MK.gold, weight: FontWeight.w700)),
-        ]),
+        if (_puzzle == null)
+          Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${pv.pile}', style: MK.body(17, weight: FontWeight.w700)),
+            Text('IN PILE', style: MK.body(8, color: MK.gold, weight: FontWeight.w700)),
+          ]),
       ]),
     );
   }
@@ -2017,20 +2168,42 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
               onPressed: _canReset ? _resetTurn : null),
         ),
       ),
+      if (_puzzle == null)
       Positioned.fromRect(
         rect: g.drawRect,
-        child: GoldButton(
-            my ? (played ? 'End turn' : (pv.pile > 0 ? 'Draw' : 'Pass')) : 'Waiting...',
+        child: AutoDrawGlow(
+          on: pv.autoDraw,
+          child: GoldButton(
+            pv.autoDraw ? 'Auto-draw' : (my ? (played ? 'End turn' : (pv.pile > 0 ? 'Draw' : 'Pass')) : 'Waiting...'),
             // Narrow phones (under 115 px between the rack and Reset): the label alone.
-            icon: g.drawRect.width < 115 ? null : (my ? (played ? Icons.check_circle_outline : Icons.add_box_outlined) : Icons.hourglass_empty),
+            icon: g.drawRect.width < 115
+                ? null
+                : (pv.autoDraw
+                    ? Icons.autorenew
+                    : (my ? (played ? Icons.check_circle_outline : Icons.add_box_outlined) : Icons.hourglass_empty)),
             compact: true,
-            onPressed: my ? _drawOrEnd : null,
+            // Opening auto-draw: a tap turns it off (and draws nothing); a long press turns it
+            // back on while it's allowed.
+            onPressed: pv.autoDraw ? () => _setAutoDraw(false) : (my ? _drawOrEnd : null),
+            onLongPress: !pv.autoDraw && pv.autoDrawAllowed && !played ? () => _setAutoDraw(true) : null,
             // No click: drawing plays the draw sound and ending a turn the bell (see _turnSounds).
             sound: false,
             key: const ValueKey('drawButton'),
           ),
+        ),
       ),
     ];
+  }
+
+  Future<void> _setAutoDraw(bool on) async {
+    _haptic();
+    final r = await s.act(AutoDrawAction(on));
+    if (!mounted) return;
+    if (!r.ok) {
+      _showToast(r.error ?? 'Auto-draw is not available.');
+    } else {
+      _showToast(on ? 'Auto-draw on' : 'Auto-draw off');
+    }
   }
 
   Widget _sortLabel(String text, bool selected) =>
@@ -2094,7 +2267,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       for (var c = 0; c < Board.width; c++) {
         final t = board.rows[r][c];
         if (t < 0 || dragging.contains(t)) continue;
-        out.add(_sprite(t, g.cellRect(r, c), spawnRect(t), glow(t), board: true, newGlow: newGlow.contains(t)));
+        out.add(_sprite(t, g.cellRect(r, c), spawnRect(t), glow(t), board: true, newGlow: newGlow.contains(t), spawn: _spawns[t]));
       }
     }
     for (var i = 0; i < rack.length; i++) {
@@ -2474,4 +2647,66 @@ class _FlyingBackState extends State<_FlyingBack> with SingleTickerProviderState
           );
         },
       );
+}
+
+
+/// The opening auto-draw glow: a soft gold pulse around the Draw button while it's on.
+class AutoDrawGlow extends StatefulWidget {
+  final bool on;
+  final Widget child;
+  const AutoDrawGlow({super.key, required this.on, required this.child});
+  @override
+  State<AutoDrawGlow> createState() => _AutoDrawGlowState();
+}
+
+class _AutoDrawGlowState extends State<AutoDrawGlow> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1400));
+
+  @override
+  void initState() {
+    super.initState();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(AutoDrawGlow old) {
+    super.didUpdateWidget(old);
+    _sync();
+  }
+
+  void _sync() {
+    if (widget.on && !_c.isAnimating) {
+      _c.repeat(reverse: true);
+    } else if (!widget.on && _c.isAnimating) {
+      _c.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.on) return widget.child;
+    return AnimatedBuilder(
+      animation: _c,
+      child: widget.child,
+      builder: (_, child) {
+        final t = Curves.easeInOut.transform(_c.value);
+        return DecoratedBox(
+          key: const ValueKey('autoDrawGlow'),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(40),
+            boxShadow: [
+              BoxShadow(color: const Color(0xFFFFE08A).withValues(alpha: .45 + .4 * t), blurRadius: 10 + 14 * t, spreadRadius: 1 + 3 * t),
+            ],
+          ),
+          child: child,
+        );
+      },
+    );
+  }
 }

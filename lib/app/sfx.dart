@@ -44,8 +44,13 @@ enum Sfx {
   /// Your turn starts (this phone's player; each person in Pass-and-play).
   turnStart(['turn_start']),
 
-  /// Your turn ends after playing tiles (a turn ended by drawing plays [draw] instead).
-  turnEnd(['turn_end_bell']);
+  /// Your turn ends after playing tiles (a turn ended by drawing plays [draw] instead). Also
+  /// a solved puzzle.
+  turnEnd(['turn_end_bell']),
+
+  /// PLACEHOLDER (silent): the tiles flying back to the deck after a solved puzzle. Three
+  /// candidates are waiting for the developer's pick; put the chosen file name here.
+  puzzleClear([]);
 
   final List<String> files;
   const Sfx(this.files);

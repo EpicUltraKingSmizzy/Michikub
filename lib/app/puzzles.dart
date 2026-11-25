@@ -18,7 +18,8 @@ import 'session.dart';
 /// The prepackaged puzzles (assets/puzzles/puzzles.json, made by tool/gen_puzzles.dart).
 class PuzzlePack {
   final Map<PuzzleLevel, List<Puzzle>> levels;
-  const PuzzlePack(this.levels);
+  final int version;
+  const PuzzlePack(this.levels, {this.version = kPuzzlePackVersion});
 
   static PuzzlePack? _loaded;
 
@@ -37,7 +38,7 @@ class PuzzlePack {
     return PuzzlePack({
       for (final l in PuzzleLevel.values)
         l: [for (final p in (j[l.name] as List? ?? const [])) Puzzle.fromJson((p as Map).cast<String, dynamic>())],
-    });
+    }, version: j['version'] as int? ?? 1);
   }
 
   int count(PuzzleLevel l) => levels[l]?.length ?? 0;
@@ -56,6 +57,9 @@ class PuzzleProgress extends ChangeNotifier {
   /// Endless numbers continue after the pack (#401, #402 ...): how many have been solved.
   final Map<PuzzleLevel, int> endlessSolved = {for (final l in PuzzleLevel.values) l: 0};
 
+  /// Pack version this progress belongs to. A new pack clears solved / endless puzzles.
+  int packVersion = 0;
+
   SharedPreferences? _p;
 
   Future<void> load() async {
@@ -73,6 +77,7 @@ class PuzzleProgress extends ChangeNotifier {
   }
 
   void fromJson(Map<String, dynamic> j) {
+    packVersion = j['packVersion'] as int? ?? 0;
     for (final l in PuzzleLevel.values) {
       final m = (j[l.name] as Map?)?.cast<String, dynamic>();
       if (m == null) continue;
@@ -83,6 +88,7 @@ class PuzzleProgress extends ChangeNotifier {
   }
 
   Map<String, dynamic> toJson() => {
+        'packVersion': packVersion,
         for (final l in PuzzleLevel.values)
           l.name: {
             'solved': (solved[l]!.toList()..sort()),
@@ -113,6 +119,16 @@ class PuzzleProgress extends ChangeNotifier {
       endless[l]!.clear();
       endlessSolved[l] = 0;
     }
+    packVersion = 0;
+  }
+
+  /// When the prepackaged pack changes, solved-progress and saved endless puzzles are cleared
+  /// so they don't point at a different puzzle with the same number.
+  void ensurePackVersion(int version) {
+    if (packVersion == version) return;
+    reset();
+    packVersion = version;
+    unawaited(save());
   }
 }
 

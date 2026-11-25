@@ -33,6 +33,7 @@ Board solvedBoard(Puzzle p) {
 void main() {
   setUp(() {
     PuzzleProgress.instance.reset();
+    PuzzleProgress.instance.packVersion = pack.version;
     PuzzlePack.debugPack = pack;
   });
 
@@ -85,6 +86,21 @@ void main() {
       expect(q.solved[PuzzleLevel.medium], {0, 3});
       expect(q.endless[PuzzleLevel.easy]!.single.rack, p1.rack);
       expect(q.nextUnsolved(PuzzleLevel.medium, 5), 1);
+    });
+
+    test('a new pack version clears saved progress', () {
+      final p = PuzzleProgress();
+      p.packVersion = 1;
+      p.solved[PuzzleLevel.easy]!.add(3);
+      p.endless[PuzzleLevel.easy]!.add(p1);
+      p.endlessSolved[PuzzleLevel.easy] = 1;
+      p.ensurePackVersion(2);
+      expect(p.packVersion, 2);
+      expect(p.solved[PuzzleLevel.easy], isEmpty);
+      expect(p.endless[PuzzleLevel.easy], isEmpty);
+      expect(p.endlessSolved[PuzzleLevel.easy], 0);
+      p.ensurePackVersion(2);
+      expect(p.packVersion, 2, reason: 'same version does not reset again');
     });
   });
 

@@ -85,31 +85,41 @@ class AutoDrawAction extends GameAction {
   Map<String, dynamic> toJson() => {'a': 'auto', 'on': on};
 }
 
-/// Does [rack] hold one or more sets (disjoint) worth at least [minPoints] together? This is
-/// the first play opening auto-draw waits for.
-bool hasOpeningPlay(List<int> rack, int minPoints) {
-  if (minPoints <= 0) return true;
+/// The best first-play total in [rack]: the highest sum of [meldPoints] over a set of
+/// disjoint valid sets (jokers count as the value they stand for, the same as [checkTurn]).
+/// 0 when the rack holds no complete set. A single run like 6-7-8 is only 21, which is not
+/// enough for a 30-point minimum.
+int openingPlayPoints(List<int> rack) {
+  var best = 0;
   var nodes = 0;
   final seen = <String>{};
-  bool dfs(List<int> left, int pts) {
-    if (pts >= minPoints) return true;
-    if (++nodes > 20000) return false;
+  void dfs(List<int> left, int pts) {
+    if (pts > best) best = pts;
+    if (++nodes > 20000) return;
     // The same tiles left with the same points: already tried (sets picked in another order).
-    if (!seen.add('$pts:${([for (final t in left) isJoker(t) ? 999 : t % 52]..sort()).join(',')}')) return false;
-    // Upper bound: every tile left counted at 13 can't reach it.
-    if (pts + left.length * 13 < minPoints) return false;
+    if (!seen.add('$pts:${([for (final t in left) isJoker(t) ? 999 : t % 52]..sort()).join(',')}')) return;
+    // Upper bound: every leftover tile at 13 still can't beat [best].
+    if (pts + left.length * 13 <= best) return;
     final cands = candidateMeldsAll(left)..sort((a, b) => meldPoints(b) - meldPoints(a));
     for (final m in cands) {
       final rest = List.of(left);
       for (final t in m) {
         rest.remove(t);
       }
-      if (dfs(rest, pts + meldPoints(m))) return true;
+      dfs(rest, pts + meldPoints(m));
     }
-    return false;
   }
 
-  return dfs(List.of(rack), 0);
+  dfs(List.of(rack), 0);
+  return best;
+}
+
+/// Does [rack] hold disjoint sets whose points together reach [minPoints]? This is the first
+/// play opening auto-draw waits for. A valid set is not enough on its own: 6-7-8 (21) does
+/// not meet a 30-point minimum.
+bool hasOpeningPlay(List<int> rack, int minPoints) {
+  if (minPoints <= 0) return true;
+  return openingPlayPoints(rack) >= minPoints;
 }
 
 /// Every run and group in [rack] that starts from its lowest kind of tile (enough for an

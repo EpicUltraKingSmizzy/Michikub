@@ -25,6 +25,7 @@ class _PuzzlesScreenState extends State<PuzzlesScreen> {
     super.initState();
     progress.addListener(_changed);
     PuzzlePack.load().then((p) {
+      progress.ensurePackVersion(p.version);
       if (mounted) setState(() => _pack = p);
     });
   }

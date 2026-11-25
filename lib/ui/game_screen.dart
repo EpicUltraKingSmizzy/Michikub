@@ -2185,7 +2185,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
             // Opening auto-draw: a tap turns it off (and draws nothing); a long press turns it
             // back on while it's allowed.
             onPressed: pv.autoDraw ? () => _setAutoDraw(false) : (my ? _drawOrEnd : null),
-            onLongPress: !pv.autoDraw && pv.autoDrawAllowed && !played ? () => _setAutoDraw(true) : null,
+            onLongPress: !pv.autoDraw && pv.autoDrawAllowed ? () => _setAutoDraw(true) : null,
             // No click: drawing plays the draw sound and ending a turn the bell (see _turnSounds).
             sound: false,
             key: const ValueKey('drawButton'),

@@ -41,9 +41,45 @@ void main() {
       expect(hasOpeningPlay([r(5), r(6), r(7), r(5, 1), r(6, 1), r(7, 1)], 36), true, reason: 'both copies');
       expect(hasOpeningPlay(weak, 0), true);
     });
+
+    test('a single 6-7-8 (21) is not a 30-point first play; 6-7-8 plus 10-10-10 is 51', () {
+      final run = [r(6), r(7), r(8)];
+      expect(openingPlayPoints(run), 21);
+      expect(hasOpeningPlay(run, 30), false);
+      final both = [r(6), r(7), r(8), b(10), y(10), k(10)];
+      expect(openingPlayPoints(both), 51);
+      expect(hasOpeningPlay(both, 30), true);
+    });
+
+    test('a joker counts as the value it stands for', () {
+      // 6-J-8 is 21; not enough for 30.
+      expect(openingPlayPoints([r(6), makeJoker(0), r(8)]), 21);
+      expect(hasOpeningPlay([r(6), makeJoker(0), r(8)], 30), false);
+      // J-12-13 is 36.
+      expect(openingPlayPoints([makeJoker(0), r(12), r(13)]), 36);
+      expect(hasOpeningPlay([makeJoker(0), r(12), r(13)], 30), true);
+      // 6-7-8-J is the run 6-7-8-9, 30 points: a real first play.
+      expect(openingPlayPoints([r(6), r(7), r(8), makeJoker(0)]), 30);
+      expect(hasOpeningPlay([r(6), r(7), r(8), makeJoker(0)], 30), true);
+    });
   });
 
   group('host', () {
+    test('6-7-8 alone: starts in auto-draw, and a long press is allowed; 6-7-8 + 10s is not', () {
+      final h = makeHost()..startRound();
+      h.racks['me'] = [r(6), r(7), r(8), b(1), y(3), k(5), b(8), y(11), k(13), b(2), y(4), k(9), b(12), y(1)];
+      h.autoDraw.clear();
+      // Re-evaluate as startRound does.
+      expect(hasOpeningPlay(h.racks['me']!, 30), false);
+      expect(h.handle('me', const AutoDrawAction(true)).ok, true, reason: 'long-press allowed: 21 points');
+      expect(h.autoDraw, contains('me'));
+      h.handle('me', const AutoDrawAction(false));
+      h.racks['me'] = [r(6), r(7), r(8), b(10), y(10), k(10)];
+      expect(h.handle('me', const AutoDrawAction(true)).ok, false, reason: '51 points: already a first play');
+      expect(h.autoDraw.contains('me'), false);
+      h.dispose();
+    });
+
     test('everyone starts in auto-draw unless their rack already has a first play; bots never', () {
       for (var seed = 1; seed < 30; seed++) {
         final h = makeHost(players: const [ann, bob, bot], seed: seed)..startRound();

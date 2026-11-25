@@ -48,9 +48,9 @@ enum Sfx {
   /// a solved puzzle.
   turnEnd(['turn_end_bell']),
 
-  /// PLACEHOLDER (silent): the tiles flying back to the deck after a solved puzzle. Three
-  /// candidates are waiting for the developer's pick; put the chosen file name here.
-  puzzleClear([]);
+  /// Tiles flying back to the deck after a solved puzzle. Real game tiles tumbling into a
+  /// pile (the developer's pick of the three candidates).
+  puzzleClear(['puzzle_clear']);
 
   final List<String> files;
   const Sfx(this.files);

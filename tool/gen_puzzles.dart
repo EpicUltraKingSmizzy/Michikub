@@ -10,7 +10,7 @@ void main(List<String> args) {
   final outPath = args.length > 1 ? args[1] : null;
   final maxSeconds = args.length > 2 ? int.parse(args[2]) : 1200;
   final sw = Stopwatch()..start();
-  final gen = PuzzleGenerator(20261125);
+  final gen = PuzzleGenerator(20261126);
   final seen = <String>{};
   // Keep a surplus pool per level so curation can pick a balanced mix.
   final pool = {for (final l in PuzzleLevel.values) l: <Puzzle>[]};
@@ -27,7 +27,8 @@ void main(List<String> args) {
       perLevelAttempts[aim] = perLevelAttempts[aim]! + 1;
       final p = gen.attempt(aim);
       if (p == null) continue;
-      final lvl = levelFor(p.score);
+      final lvl = p.band;
+      if (lvl == null) continue;
       if (pool[lvl]!.length >= want) {
         wrongLevel++;
         continue;
@@ -61,13 +62,20 @@ void main(List<String> args) {
     }
     final rack = ps.isEmpty ? 0 : ps.map((p) => p.rack.length).reduce((a, b) => a + b) / ps.length;
     final jok = ps.where((p) => p.allTiles.any((t) => t >= 104)).length;
+    final sc = <int, int>{};
+    for (final p in ps) {
+      sc[p.setsChanged] = (sc[p.setsChanged] ?? 0) + 1;
+    }
+    final tm = ps.isEmpty ? 0 : ps.map((p) => p.tilesMoved).reduce((a, b) => a + b) / ps.length;
+    final scAvg = ps.isEmpty ? 0 : ps.map((p) => p.setsChanged).reduce((a, b) => a + b) / ps.length;
     stdout.writeln('${l.name}: ${ps.length} (pool ${pool[l]!.length}), avg rack ${rack.toStringAsFixed(1)}, '
-        'with jokers $jok, techniques ${techs.map((k, v) => MapEntry(k.name, v))}');
+        'avg setsChanged ${scAvg.toStringAsFixed(1)}, avg tilesMoved ${tm.toStringAsFixed(1)}, '
+        'setsChanged dist $sc, with jokers $jok, techniques ${techs.map((k, v) => MapEntry(k.name, v))}');
   }
   if (outPath != null) {
     final json = {
-      'version': 1,
-      'seed': 20261125,
+      'version': kPuzzlePackVersion,
+      'seed': 20261126,
       for (final e in pack.entries) e.key: [for (final p in e.value) p.toJson()],
     };
     File(outPath).writeAsStringSync(jsonEncode(json));

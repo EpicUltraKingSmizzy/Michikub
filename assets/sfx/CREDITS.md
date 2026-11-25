@@ -14,6 +14,7 @@ All sounds here are CC0 1.0 (public domain dedication) or recorded for Michikub 
 | `pick_A.ogg`, `pick_B.ogg`, `pick_C.ogg` | Long-press picking up a set of 3+ tiles (one at random) | Kenney Casino Audio 1.1, `chips-collide-1.ogg` (the attach hit), repeated in a quick burst: four even hits / four speeding up with a little pitch wander / a flurry of three and a heavier final clack. Built by `/workspace/michikub-sfx/mahjong/build_pick.py` (previews `shuffle_burstC_A/B/C`). https://opengameart.org/content/54-casino-sound-effects-cards-dice-chips (Kenney.nl) | CC0 1.0 |
 | `tile_tap.ogg` | Tapping a tile to select it | Original: recorded by the developer (fingernail taps on real tiles). One tap, cut from the room echo (low cut and a quick fade on the tail), tight start, peak −9 dBFS. | Original, Michikub's own |
 | `tile_single.ogg` | One tile set down alone on the table, in no set | Original: recorded by the developer, from the same recording. One tap with its natural room sound (no echo removal), tight start, peak −9 dBFS. | Original, Michikub's own |
+| `puzzle_clear.ogg` | A solved puzzle's tiles flying back into the deck | Freesound 785585 “tiles fall on corkboard” by Detective_Lemons, the busiest 1.3 s, corkboard thud filtered out, peak −9 dBFS. The developer's pick of three fly-back candidates. https://freesound.org/people/Detective_Lemons/sounds/785585/ | CC0 1.0 |
 
 CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/
 

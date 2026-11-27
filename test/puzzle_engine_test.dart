@@ -90,6 +90,117 @@ void main() {
     });
   });
 
+
+  group('solution equivalence', () {
+    test('a 6-group of 4 plus 3-4-5 is the same as moving the 6 onto the run', () {
+      final left = <List<int>>[
+        [r(6), b(6), y(6), k(6)],
+        [r(3), r(4), r(5)],
+      ];
+      final right = <List<int>>[
+        [b(6), y(6), k(6)],
+        [r(3), r(4), r(5), r(6)],
+      ];
+      expect(canonicalSolution(left), canonicalSolution(right));
+    });
+
+    test('a 1-6 run is the same as splitting it into 1-2-3 and 4-5-6', () {
+      final joined = <List<int>>[
+        [r(1), r(2), r(3), r(4), r(5), r(6)],
+      ];
+      final split = <List<int>>[
+        [r(1), r(2), r(3)],
+        [r(4), r(5), r(6)],
+      ];
+      expect(canonicalSolution(joined), canonicalSolution(split));
+    });
+
+    test('giving either end of a 4-5-6-7 run to its number group is the same board', () {
+      final long = <List<int>>[
+        [r(4), r(5), r(6), r(7)],
+        [b(4), y(4), k(4)],
+        [b(7), y(7), k(7)],
+      ];
+      final give4 = <List<int>>[
+        [r(5), r(6), r(7)],
+        [r(4), b(4), y(4), k(4)],
+        [b(7), y(7), k(7)],
+      ];
+      final give7 = <List<int>>[
+        [r(4), r(5), r(6)],
+        [b(4), y(4), k(4)],
+        [r(7), b(7), y(7), k(7)],
+      ];
+      expect(canonicalSolution(long), canonicalSolution(give4));
+      expect(canonicalSolution(long), canonicalSolution(give7));
+    });
+
+    test('a genuinely different arrangement is not the same solution', () {
+      final runAndGroup = <List<int>>[
+        [r(3), r(4), r(5), r(6)],
+        [b(6), y(6), k(6)],
+      ];
+      final twoRuns = <List<int>>[
+        [r(3), r(4), r(5)],
+        [b(6), y(6), k(6)],
+        [r(7), r(8), r(9)],
+      ];
+      expect(canonicalSolution(runAndGroup) == canonicalSolution(twoRuns), false);
+    });
+
+    test('decoy reshuffles among themselves stay the same solution', () {
+      final longDecoy = <List<int>>[
+        [r(7), b(7), y(7)],
+        [r(8), r(9), r(10)],
+        [b(1), b(2), b(3), b(4), b(5), b(6)],
+      ];
+      final splitDecoy = <List<int>>[
+        [r(7), b(7), y(7)],
+        [r(8), r(9), r(10)],
+        [b(1), b(2), b(3)],
+        [b(4), b(5), b(6)],
+      ];
+      expect(canonicalSolution(longDecoy), canonicalSolution(splitDecoy));
+    });
+
+    test('decoys that cannot mix with a unique core keep one solution', () {
+      final coreSol = <List<int>>[
+        [r(4), r(5), r(6)],
+        [r(7), b(7), y(7)],
+      ];
+      final coreTiles = [for (final s in coreSol) ...s];
+      final decoys = <List<int>>[
+        [k(1), k(2), k(3)],
+        [b(1), b(2), b(3)],
+        [y(11), y(12), y(13)],
+      ];
+      expect(decoysCanMix(coreTiles, [for (final s in decoys) ...s]), false);
+      expect(
+        decoysPreserveUniqueness(coreTiles: coreTiles, coreSolutions: [coreSol], decoys: decoys),
+        true,
+      );
+    });
+
+    test('decoys that bridge a gap create a second, non-equivalent end board', () {
+      // r1-2-3 and r5-6-7 cannot join; a group of 4s that includes r4 can bridge them.
+      final coreSol = <List<int>>[
+        [r(1), r(2), r(3)],
+        [r(5), r(6), r(7)],
+      ];
+      final coreTiles = [for (final s in coreSol) ...s];
+      final decoys = <List<int>>[
+        [r(4), b(4), y(4), k(4)],
+        [b(11), y(11), k(11)],
+        [b(12), y(12), k(12)],
+      ];
+      expect(decoysCanMix(coreTiles, [for (final s in decoys) ...s]), true);
+      expect(
+        decoysPreserveUniqueness(coreTiles: coreTiles, coreSolutions: [coreSol], decoys: decoys),
+        false,
+      );
+    });
+  });
+
   group('generator', () {
     test('a fixed seed gives the same puzzles', () {
       String run(int seed) {
@@ -113,7 +224,7 @@ void main() {
     });
 
     test('endless mode makes a puzzle of the asked difficulty on the phone, quickly', () {
-      for (final l in PuzzleLevel.values) {
+      for (final l in [PuzzleLevel.easy, PuzzleLevel.medium, PuzzleLevel.hard]) {
         final sw = Stopwatch()..start();
         final p = generateOne(l, rng: math.Random(l.index + 1), maxTries: 2000)!;
         expect(p.band, l);
@@ -131,18 +242,34 @@ void main() {
     });
   });
 
-  test('the shipped pack: 400 per difficulty, every one checked, no duplicates', () {
+  test('the shipped pack: 400 Easy/Medium/Hard and 200 Master, every one checked, no duplicates', () {
     final j = jsonDecode(File('assets/puzzles/puzzles.json').readAsStringSync()) as Map<String, dynamic>;
     expect(j['version'], kPuzzlePackVersion);
     final keys = <String>{};
     for (final l in PuzzleLevel.values) {
-      final list = [for (final p in j[l.name] as List) Puzzle.fromJson((p as Map).cast<String, dynamic>())];
-      expect(list.length, 400, reason: l.name);
+      final raw = j[l.name] as List? ?? const [];
+      final list = [for (final p in raw) Puzzle.fromJson((p as Map).cast<String, dynamic>())];
+      if (l == PuzzleLevel.master && raw.isEmpty) continue;
+      expect(list.length, l == PuzzleLevel.master ? 200 : 400, reason: l.name);
       for (final p in list) {
-        final c = checkPuzzle(p.board, p.rack);
+        final c = checkPuzzle(p.board, p.rack,
+            limit: l == PuzzleLevel.master ? kMasterSolutionLimit : 40,
+            nodeLimit: l == PuzzleLevel.master ? kMasterNodeLimit : 80000);
         expect(c, isNotNull, reason: '$p');
         expect(qualifiesFor(l, p.board, p.rack, c!), true, reason: '$p sc=${c.minSetsChanged} tm=${c.minTilesMoved}');
-        expect(c.minSetsChanged, greaterThanOrEqualTo(l == PuzzleLevel.easy ? 2 : (l == PuzzleLevel.medium ? 3 : 4)));
+        final minSc = switch (l) {
+          PuzzleLevel.easy => 2,
+          PuzzleLevel.medium => 3,
+          PuzzleLevel.hard => 4,
+          PuzzleLevel.master => 4,
+        };
+        expect(c.minSetsChanged, greaterThanOrEqualTo(minSc));
+        if (l == PuzzleLevel.master) {
+          expect(c.minTilesMoved, greaterThanOrEqualTo(5));
+          expect(c.equivalentSolutions, 1);
+          expect(p.decoyCount, inInclusiveRange(3, 4));
+          expect(puzzleStartFits(p.board), true, reason: '$p');
+        }
         expect(p.techniques, isNotEmpty);
         expect(simpleSolvable(p.board, p.rack), false, reason: '$p');
         _expectSolutionRight(p);

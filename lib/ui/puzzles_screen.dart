@@ -7,7 +7,7 @@ import '../engine/puzzle.dart';
 import 'game_screen.dart';
 import 'theme.dart';
 
-/// Puzzles: Easy, Medium and Hard. Each button shows how many are solved (20/400) and fills
+/// Puzzles: Easy, Medium, Hard and Master. Each button shows how many are solved (20/400) and fills
 /// with gold from the left like a loading bar; a finished difficulty gets a gold star. A tap
 /// opens the next unsolved puzzle (after the star, new puzzles are made on the phone).
 class PuzzlesScreen extends StatefulWidget {

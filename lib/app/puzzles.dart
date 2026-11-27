@@ -168,6 +168,14 @@ class PuzzleSession extends GameSession {
   /// Endless mode couldn't make a puzzle (shouldn't happen; shown as a message).
   String? error;
 
+  /// True while an endless Master puzzle is being made in a background isolate.
+  bool generating = false;
+  int _genToken = 0;
+
+  /// Tests: make every endless puzzle on this isolate (skip [compute]).
+  @visibleForTesting
+  static bool debugSyncGenerate = false;
+
   PuzzleSession({required this.level, required this.pack, PuzzleProgress? progress, int? openIndex, math.Random? rng})
       : progress = progress ?? PuzzleProgress.instance,
         _rng = rng ?? math.Random() {
@@ -196,17 +204,54 @@ class PuzzleSession extends GameSession {
       return;
     }
     // Star earned: a new puzzle made here, by the same rules.
+    _packIndex = null;
+    _endlessIndex = null;
+    number = total + progress.endlessSolved[level]! + 1;
+    if (level == PuzzleLevel.master && !debugSyncGenerate) {
+      _startEndlessGenerate();
+      return;
+    }
     final p = generateOne(level, rng: _rng);
     if (p == null) {
       error = 'Couldn\'t make a new puzzle. Try again.';
       // Fall back to a random pack puzzle so the table isn't empty.
-      _openPack(_rng.nextInt(math.max(1, total)));
+      if (total > 0) _openPack(_rng.nextInt(total));
       return;
     }
-    _packIndex = null;
-    _endlessIndex = null;
-    number = total + progress.endlessSolved[level]! + 1;
     _load(p);
+  }
+
+  void _startEndlessGenerate() {
+    final token = ++_genToken;
+    generating = true;
+    error = null;
+    _load(Puzzle(board: const [], rack: const [], solution: const []));
+    unawaited(_runEndlessGenerate(token));
+  }
+
+  Future<void> _runEndlessGenerate(int token) async {
+    final seed = _rng.nextInt(0x7fffffff);
+    try {
+      final json = await compute(generateOneJson, [level.index, seed, 800]);
+      if (token != _genToken) return;
+      if (json == null) {
+        error = 'Couldn\'t make a new puzzle. Try again.';
+        if (total > 0) {
+          _openPack(_rng.nextInt(total));
+        }
+      } else {
+        _load(Puzzle.fromJson(json));
+      }
+    } catch (_) {
+      if (token != _genToken) return;
+      error = 'Couldn\'t make a new puzzle. Try again.';
+      if (total > 0) _openPack(_rng.nextInt(math.max(1, total)));
+    } finally {
+      if (token == _genToken) {
+        generating = false;
+        _refresh();
+      }
+    }
   }
 
   void _openPack(int i) {
@@ -225,6 +270,8 @@ class PuzzleSession extends GameSession {
 
   /// Replays a beaten puzzle from the list.
   void open(BeatenPuzzle b) {
+    _genToken++;
+    generating = false;
     if (b.packIndex != null) {
       _openPack(b.packIndex!);
     } else if (b.endlessIndex != null) {
@@ -370,4 +417,12 @@ String puzzleLevelName(PuzzleLevel l) => switch (l) {
       PuzzleLevel.easy => 'Easy',
       PuzzleLevel.medium => 'Medium',
       PuzzleLevel.hard => 'Hard',
+      PuzzleLevel.master => 'Master',
     };
+
+/// Top-level entry so [PuzzleSession] can build an endless Master puzzle in a background
+/// isolate (the search can take a second or two).
+Map<String, dynamic>? generateOneJson(List<int> args) {
+  final p = generateOne(PuzzleLevel.values[args[0]], rng: math.Random(args[1]), maxTries: args[2]);
+  return p?.toJson();
+}

@@ -17,7 +17,7 @@ int k(int n) => makeTile(TileColor.black, n);
 
 final p1 = Puzzle(board: [[r(7), b(7), y(7), k(7)]], rack: [r(8), r(9)], solution: [[b(7), y(7), k(7)], [r(7), r(8), r(9)]]);
 final p2 = Puzzle(board: [[r(4), r(5), r(6), r(7)]], rack: [b(7), y(7)], solution: [[r(4), r(5), r(6)], [r(7), b(7), y(7)]]);
-final pack = PuzzlePack({PuzzleLevel.easy: [p1, p2], PuzzleLevel.medium: [p2, p1], PuzzleLevel.hard: [p1]});
+final pack = PuzzlePack({PuzzleLevel.easy: [p1, p2], PuzzleLevel.medium: [p2, p1], PuzzleLevel.hard: [p1], PuzzleLevel.master: [p1]});
 
 Board solvedBoard(Puzzle p) {
   final b = Board.empty();

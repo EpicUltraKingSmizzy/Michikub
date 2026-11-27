@@ -40,7 +40,7 @@ const kTechniqueNames = {
 /// Placeholder joker id in solver output (the solvers treat jokers as interchangeable).
 const int kAnyJoker = -2;
 
-enum PuzzleLevel { easy, medium, hard }
+enum PuzzleLevel { easy, medium, hard, master }
 
 class Puzzle {
   /// The table at the start: each set's tiles in order (jokers sit where they stand).
@@ -58,6 +58,12 @@ class Puzzle {
   final int tilesMoved;
   final int solutions;
 
+  /// Distinct end boards under [canonicalSolution] (pointless-move equivalence).
+  final int equivalentSolutions;
+
+  /// Decoy sets added after the core (Master only).
+  final int decoyCount;
+
   /// The difficulty this puzzle shipped at, if it was generated.
   final PuzzleLevel? band;
   const Puzzle({
@@ -69,6 +75,8 @@ class Puzzle {
     this.setsChanged = 0,
     this.tilesMoved = 0,
     this.solutions = 0,
+    this.equivalentSolutions = 0,
+    this.decoyCount = 0,
     this.band,
   });
 
@@ -83,6 +91,8 @@ class Puzzle {
         'sc': setsChanged,
         'tm': tilesMoved,
         'n': solutions,
+        if (equivalentSolutions != 0) 'eq': equivalentSolutions,
+        if (decoyCount != 0) 'dc': decoyCount,
         if (band != null) 'l': band!.index,
       };
 
@@ -97,6 +107,8 @@ class Puzzle {
       setsChanged: j['sc'] as int? ?? 0,
       tilesMoved: j['tm'] as int? ?? 0,
       solutions: j['n'] as int? ?? 0,
+      equivalentSolutions: j['eq'] as int? ?? 0,
+      decoyCount: j['dc'] as int? ?? 0,
       band: j['l'] is int ? PuzzleLevel.values[j['l'] as int] : null,
     );
   }
@@ -521,6 +533,7 @@ class PuzzleCheck {
   /// True when any solution only pulls one tile off one board set (plus ends / new rack sets).
   final bool anySingleDetach;
   final int rackSets;
+  final int equivalentSolutions;
   final List<List<int>> firstSolution;
   const PuzzleCheck({
     required this.solutions,
@@ -530,6 +543,7 @@ class PuzzleCheck {
     required this.minTilesMoved,
     required this.anySingleDetach,
     required this.rackSets,
+    required this.equivalentSolutions,
     required this.firstSolution,
   });
 }
@@ -567,6 +581,7 @@ PuzzleCheck? checkPuzzle(List<List<int>> board, List<int> rack, {int limit = 40,
     minTilesMoved: minMoved,
     anySingleDetach: anySingle,
     rackSets: rackOnlySetCount(rack),
+    equivalentSolutions: {for (final s in found.solutions) canonicalSolution(s)}.length,
     firstSolution: simplest,
   );
 }
@@ -611,11 +626,21 @@ bool qualifiesFor(PuzzleLevel level, List<List<int>> board, List<int> rack, Puzz
       return c.minSetsChanged >= 3 && c.minTilesMoved >= 2 && c.minTechniques >= 2 && c.rackSets == 0;
     case PuzzleLevel.hard:
       return c.minSetsChanged >= 4 && c.minTilesMoved >= 4 && c.minTechniques >= 2 && c.rackSets == 0 && c.solutions <= 16;
+    case PuzzleLevel.master:
+      // Decoy count is a generation property (see [levelOf]). The core uses Hard's set and
+      // technique bars, with a higher tiles-moved floor, plus uniqueness after the decoys.
+      return c.minSetsChanged >= 4 &&
+          c.minTilesMoved >= 5 &&
+          c.minTechniques >= 2 &&
+          c.rackSets == 0 &&
+          c.equivalentSolutions == 1;
   }
 }
 
 /// Highest difficulty this puzzle qualifies for, or null if it isn't hard enough to ship.
-PuzzleLevel? levelOf(List<List<int>> board, List<int> rack, PuzzleCheck c) {
+PuzzleLevel? levelOf(List<List<int>> board, List<int> rack, PuzzleCheck c, {int decoyCount = 0}) {
+  // Master also needs the decoy sets; a uniquely solvable Hard core is still Hard.
+  if (decoyCount >= 3 && qualifiesFor(PuzzleLevel.master, board, rack, c)) return PuzzleLevel.master;
   if (qualifiesFor(PuzzleLevel.hard, board, rack, c)) return PuzzleLevel.hard;
   if (qualifiesFor(PuzzleLevel.medium, board, rack, c)) return PuzzleLevel.medium;
   if (qualifiesFor(PuzzleLevel.easy, board, rack, c)) return PuzzleLevel.easy;
@@ -633,6 +658,11 @@ double scorePuzzle(List<List<int>> board, List<int> rack, PuzzleCheck c) {
 
 const kPuzzlePackVersion = 2;
 
+/// Master checks enumerate more raw solutions (decoy reshuffles are common) and may need a
+/// larger node budget than Hard.
+const kMasterSolutionLimit = 500;
+const kMasterNodeLimit = 150000;
+
 // --- the generator ---------------------------------------------------------------------
 
 /// Counters for one generator run.
@@ -647,10 +677,18 @@ class GenStats {
   int pullFails = 0;
   int qualifyRejects = 0;
   int solverCaps = 0;
+  int decoyFails = 0;
+  int uniqueRejects = 0;
+  int fitRejects = 0;
+  int uniqueCores = 0;
+  int decoyTries = 0;
+  int decoyHits = 0;
   @override
   String toString() => 'attempts $attempts, accepted $accepted, simple-solvable $simpleRejects, '
       'scramble-fail $scrambleFails, pull-fail $pullFails, qualify-fail $qualifyRejects, '
-      'solver-cap $solverCaps, other rejects $otherRejects';
+      'solver-cap $solverCaps, unique-cores $uniqueCores, core-not-unique $uniqueRejects, '
+      'decoy-tries $decoyTries, decoy-hits $decoyHits, decoy-fail $decoyFails, '
+      'fit-fail $fitRejects, other rejects $otherRejects';
 }
 
 /// Builds puzzles: a winning table of interlocking sets, then several valid inverse
@@ -683,28 +721,32 @@ class PuzzleGenerator {
   /// One try. May qualify at a different level than [aim]; the packer files it by [levelOf].
   Puzzle? attempt(PuzzleLevel aim) {
     stats.attempts++;
+    // Master cores use the same build path as Hard (same jokers, size, scrambles and
+    // rack pull). A previous Master path asked for more scrambles and more rack-source
+    // sets, which is why it failed those steps far more often than Hard.
+    final build = aim == PuzzleLevel.master ? PuzzleLevel.hard : aim;
     _used = {};
-    _jokersLeft = switch (aim) {
+    _jokersLeft = switch (build) {
       PuzzleLevel.easy => rng.nextDouble() < .35 ? 1 : 0,
       PuzzleLevel.medium => rng.nextDouble() < .55 ? 1 : (rng.nextDouble() < .3 ? 2 : 0),
-      PuzzleLevel.hard => rng.nextDouble() < .5 ? 2 : 1,
+      PuzzleLevel.hard || PuzzleLevel.master => rng.nextDouble() < .5 ? 2 : 1,
     };
     _nextJoker = 0;
-    final target = switch (aim) {
+    final target = switch (build) {
       PuzzleLevel.easy => 5 + rng.nextInt(3),
       PuzzleLevel.medium => 6 + rng.nextInt(3),
-      PuzzleLevel.hard => 7 + rng.nextInt(3),
+      PuzzleLevel.hard || PuzzleLevel.master => 7 + rng.nextInt(3),
     };
-    final solution = _buildInterlocking(target, aim);
+    final solution = _buildInterlocking(target, build);
     if (solution == null || solution.length < 5) {
       stats.otherRejects++;
       return null;
     }
     var board = [for (final s in solution) List.of(s)];
-    final wantScrambles = switch (aim) {
+    final wantScrambles = switch (build) {
       PuzzleLevel.easy => 2 + rng.nextInt(2),
       PuzzleLevel.medium => 4 + rng.nextInt(3),
-      PuzzleLevel.hard => 6 + rng.nextInt(4),
+      PuzzleLevel.hard || PuzzleLevel.master => 6 + rng.nextInt(4),
     };
     var applied = 0;
     for (var i = 0; i < wantScrambles * 4 && applied < wantScrambles; i++) {
@@ -714,22 +756,26 @@ class PuzzleGenerator {
         applied++;
       }
     }
-    final minScrambles = switch (aim) {
+    final minScrambles = switch (build) {
       PuzzleLevel.easy => 2,
       PuzzleLevel.medium => 3,
-      PuzzleLevel.hard => 4,
+      PuzzleLevel.hard || PuzzleLevel.master => 4,
     };
     if (applied < minScrambles) {
       stats.scrambleFails++;
       return null;
     }
+    var anyPull = false;
     for (var t = 0; t < 8; t++) {
-      final pulled = _pullRack(board, solution, aim);
+      final pulled = _pullRack(board, solution, build);
       if (pulled == null) continue;
-      final p = _finish(pulled.$1, pulled.$2, solution);
+      anyPull = true;
+      final p = aim == PuzzleLevel.master
+          ? _finishMaster(pulled.$1, pulled.$2, solution)
+          : _finish(pulled.$1, pulled.$2, solution);
       if (p != null) return p;
     }
-    stats.pullFails++;
+    if (!anyPull) stats.pullFails++;
     return null;
   }
 
@@ -764,17 +810,12 @@ class PuzzleGenerator {
       setsChanged: check.minSetsChanged,
       tilesMoved: check.minTilesMoved,
       solutions: check.solutions,
+      equivalentSolutions: check.equivalentSolutions,
       band: lvl,
     );
   }
 
-  List<List<int>> _withJokerIds(List<List<int>> sol, List<int> tiles) {
-    final jokers = tiles.where(isJoker).toList()..sort();
-    var k = 0;
-    return [
-      for (final s in sol) [for (final t in s) t == kAnyJoker ? jokers[k++] : t],
-    ];
-  }
+  List<List<int>> _withJokerIds(List<List<int>> sol, List<int> tiles) => assignJokerIds(sol, tiles);
 
   List<List<int>>? _buildInterlocking(int target, PuzzleLevel aim) {
     final sets = <List<int>>[];
@@ -783,7 +824,7 @@ class PuzzleGenerator {
     final want = switch (aim) {
       PuzzleLevel.easy => 1,
       PuzzleLevel.medium => 2,
-      PuzzleLevel.hard => 2 + rng.nextInt(2),
+      PuzzleLevel.hard || PuzzleLevel.master => 2 + rng.nextInt(2),
     };
     var made = 0;
     for (final fn in [...clusters, ...clusters]) {
@@ -1155,7 +1196,7 @@ class PuzzleGenerator {
     final want = switch (aim) {
       PuzzleLevel.easy => 3 + rng.nextInt(3),
       PuzzleLevel.medium => 5 + rng.nextInt(4),
-      PuzzleLevel.hard => 6 + rng.nextInt(5),
+      PuzzleLevel.hard || PuzzleLevel.master => 6 + rng.nextInt(5),
     };
     final minSets = aim == PuzzleLevel.easy ? 2 : 3;
     final pool = [...changed, ...boardTiles.where((t) => !changed.contains(t))]..shuffle(rng);
@@ -1167,6 +1208,7 @@ class PuzzleGenerator {
       final src = attempt == 0 ? ranked : (List.of(pool)..shuffle(rng));
       for (final t in src) {
         if (pick.length >= want) break;
+        if (pick.contains(t)) continue;
         if (isJoker(t) && pick.where(isJoker).isNotEmpty && aim == PuzzleLevel.easy) continue;
         pick.add(t);
         if (whereB[t] != null) fromSet.add(whereB[t]!);
@@ -1220,8 +1262,577 @@ class PuzzleGenerator {
       pick.remove(real);
     }
   }
+
+  /// A Hard-path core that also has at least 5 tiles moved and exactly one equivalent
+  /// end board, plus 3–4 tempting decoy sets. Many decoy combinations are tried; the
+  /// core's solutions are cached so each uniqueness check can reuse them.
+  Puzzle? _finishMaster(List<List<int>> start, List<int> rack, List<List<int>> solution) {
+    if (rack.isEmpty || rack.length > 14) {
+      stats.otherRejects++;
+      return null;
+    }
+    final coreTiles = [for (final s in start) ...s, ...rack];
+    if ({...coreTiles}.length != coreTiles.length) {
+      stats.otherRejects++;
+      return null;
+    }
+    if (simpleSolvable(start, rack)) {
+      stats.simpleRejects++;
+      return null;
+    }
+    final found = solveSearch(coreTiles, limit: kMasterSolutionLimit, nodeLimit: 80000);
+    if (!found.exhausted) {
+      stats.solverCaps++;
+      return null;
+    }
+    if (found.solutions.isEmpty || found.solutions.length >= kMasterSolutionLimit) {
+      stats.otherRejects++;
+      return null;
+    }
+    var minBroken = 1 << 20;
+    var minMoved = 1 << 20;
+    var anySingle = false;
+    SolutionShape? cheapest;
+    final keys = <String>{};
+    for (final sol in found.solutions) {
+      keys.add(canonicalSolution(assignJokerIds(sol, coreTiles)));
+      if (keys.length > 1) {
+        stats.uniqueRejects++;
+        return null;
+      }
+      final sh = shapeOf(start, sol);
+      if (sh.techniques.isEmpty) {
+        stats.otherRejects++;
+        return null;
+      }
+      if (sh.singleDetach) anySingle = true;
+      final better = sh.broken < minBroken || (sh.broken == minBroken && sh.tilesMoved < minMoved);
+      if (better) {
+        minBroken = sh.broken;
+        minMoved = sh.tilesMoved;
+        cheapest = sh;
+      }
+    }
+    if (anySingle ||
+        minBroken < 4 ||
+        minMoved < 5 ||
+        cheapest!.techniques.length < 2 ||
+        rackOnlySetCount(rack) != 0) {
+      stats.qualifyRejects++;
+      return null;
+    }
+    stats.uniqueCores++;
+    final combos = _decoyCombos(start, rack, solution, maxCombos: 150);
+    if (combos.isEmpty) {
+      stats.decoyFails++;
+      return null;
+    }
+    // A few cores have a huge mixed search; cap the whole decoy loop so one
+    // puzzle cannot stall the pack run for minutes.
+    final decoyDeadline = DateTime.now().add(const Duration(seconds: 5));
+    for (final decoys in combos) {
+      if (DateTime.now().isAfter(decoyDeadline)) break;
+      stats.decoyTries++;
+      final board = [for (final s in start) List.of(s), ...decoys];
+      final allTiles = [for (final s in board) ...s, ...rack];
+      if ({...allTiles}.length != allTiles.length) continue;
+      if (!puzzleStartFits(board)) {
+        stats.fitRejects++;
+        continue;
+      }
+      if (simpleSolvable(board, rack)) continue;
+      if (!decoysPreserveUniqueness(coreTiles: coreTiles, coreSolutions: found.solutions, decoys: decoys)) {
+        continue;
+      }
+      // Re-measure the real minimum over every solution of the table plus decoys.
+      // A cheaper mixed line can fall under the Master bar even when the intended
+      // core-plus-decoys line meets it.
+      final check = checkPuzzle(board, rack, limit: kMasterSolutionLimit, nodeLimit: kMasterNodeLimit);
+      if (check == null) continue;
+      if (!qualifiesFor(PuzzleLevel.master, board, rack, check)) continue;
+      if (check.minTilesMoved < 5 || check.equivalentSolutions != 1) continue;
+      final intended = _withJokerIds(check.firstSolution, allTiles);
+      stats.decoyHits++;
+      stats.accepted++;
+      return Puzzle(
+        board: board,
+        rack: List.of(rack)..shuffle(rng),
+        solution: [for (final s in intended) List.of(s)],
+        techniques: check.needs,
+        score: scorePuzzle(board, rack, check),
+        setsChanged: check.minSetsChanged,
+        tilesMoved: check.minTilesMoved,
+        solutions: check.solutions,
+        equivalentSolutions: 1,
+        decoyCount: decoys.length,
+        band: PuzzleLevel.master,
+      );
+    }
+    stats.decoyFails++;
+    return null;
+  }
+
+  /// Many 3- or 4-set decoy combinations from leftover tiles, scored so they look
+  /// tempting (same colours, numbers next to puzzle tiles, numbers of tiles you'll move).
+  List<List<List<int>>> _decoyCombos(List<List<int>> start, List<int> rack, List<List<int>> solution,
+      {int maxCombos = 150}) {
+    final boardNums = <int>{};
+    final boardColors = <int>{};
+    final adj = <int>{};
+    for (final s in start) {
+      for (final t in s) {
+        if (isJoker(t)) continue;
+        final n = tileNumber(t), c = tileColor(t).index;
+        boardNums.add(n);
+        boardColors.add(c);
+        if (n > 1) adj.add(n - 1);
+        if (n < 13) adj.add(n + 1);
+      }
+    }
+    final movedNums = <int>{};
+    for (final t in rack) {
+      if (!isJoker(t)) movedNums.add(tileNumber(t));
+    }
+    final whereS = <int, int>{};
+    for (var i = 0; i < solution.length; i++) {
+      for (final t in solution[i]) {
+        if (!isJoker(t)) whereS[t] = i;
+      }
+    }
+    for (var i = 0; i < start.length; i++) {
+      for (final t in start[i]) {
+        if (isJoker(t)) continue;
+        if (whereS[t] != null && whereS[t] != i) movedNums.add(tileNumber(t));
+      }
+    }
+
+    int score(List<int> set) {
+      var s = 0;
+      for (final t in set) {
+        if (isJoker(t)) continue;
+        final n = tileNumber(t), c = tileColor(t).index;
+        if (movedNums.contains(n)) s += 3;
+        if (adj.contains(n)) s += 2;
+        if (boardColors.contains(c)) s += 1;
+        if (boardNums.contains(n)) s += 1;
+      }
+      return s;
+    }
+
+    final cands = <List<int>>[];
+    for (var n = 1; n <= 13; n++) {
+      final cs = [for (var c = 0; c < 4; c++) if (_free(c, n)) c];
+      if (cs.length >= 3) {
+        cands.add([for (final c in cs.take(3)) _t(c, n)]);
+        if (cs.length == 4) cands.add([for (final c in cs) _t(c, n)]);
+      }
+    }
+    for (var c = 0; c < 4; c++) {
+      var v = 1;
+      while (v <= 13) {
+        if (!_free(c, v)) {
+          v++;
+          continue;
+        }
+        var w = v;
+        while (w <= 13 && _free(c, w)) {
+          w++;
+        }
+        final span = w - v;
+        if (span >= 3) {
+          for (var len = 3; len <= math.min(5, span); len++) {
+            for (var s0 = v; s0 + len <= w; s0++) {
+              cands.add([for (var n = s0; n < s0 + len; n++) _t(c, n)]);
+            }
+          }
+        }
+        v = w;
+      }
+    }
+    if (cands.isEmpty) return const [];
+    cands.sort((a, b) => score(b).compareTo(score(a)));
+
+    List<List<int>>? greedy(List<List<int>> src, int n) {
+      final out = <List<int>>[];
+      final used = <int>{};
+      for (final s in src) {
+        if (out.length >= n) break;
+        if (s.any(used.contains)) continue;
+        out.add(s);
+        used.addAll(s);
+      }
+      return out.length >= n ? out : null;
+    }
+
+    final seen = <String>{};
+    final combos = <List<List<int>>>[];
+    void add(List<List<int>>? pack) {
+      if (pack == null || pack.length < 3) return;
+      final k = ([for (final s in pack) ([...s]..sort()).join(',')]..sort()).join('|');
+      if (seen.add(k)) combos.add(pack);
+    }
+
+    add(greedy(cands, 4));
+    add(greedy(cands, 3));
+    // Diverse random packs, still biased toward high-scoring candidates (they stay at the front).
+    for (var i = 0; i < maxCombos * 2 && combos.length < maxCombos; i++) {
+      final src = List.of(cands)..shuffle(rng);
+      // Keep a slightly score-biased mix: first half often includes the top candidates.
+      if (i.isEven && cands.length > 6) {
+        src.replaceRange(0, math.min(6, src.length), cands.take(6).toList()..shuffle(rng));
+      }
+      add(greedy(src, 3 + rng.nextInt(2)));
+    }
+    return combos;
+  }
 }
 
+
+/// Put the real joker ids from [tiles] into a solver solution that used [kAnyJoker].
+List<List<int>> assignJokerIds(List<List<int>> sol, List<int> tiles) {
+  final jokers = tiles.where(isJoker).toList()..sort();
+  var k = 0;
+  return [
+    for (final s in sol) [for (final t in s) t == kAnyJoker ? jokers[k++] : t],
+  ];
+}
+
+/// Whether any valid set can mix a core tile (or a core joker) with a decoy tile.
+bool decoysCanMix(List<int> core, List<int> decoys) {
+  final jokers = core.where(isJoker).length + decoys.where(isJoker).length;
+  for (var n = 1; n <= 13; n++) {
+    var cCount = 0, dCount = 0;
+    for (final t in core) {
+      if (!isJoker(t) && tileNumber(t) == n) cCount++;
+    }
+    for (final t in decoys) {
+      if (!isJoker(t) && tileNumber(t) == n) dCount++;
+    }
+    if (cCount > 0 && dCount > 0 && cCount + dCount + jokers >= 3) return true;
+  }
+  for (var c = 0; c < 4; c++) {
+    final coreN = {for (final t in core) if (!isJoker(t) && tileColor(t).index == c) tileNumber(t)};
+    final decoyN = {for (final t in decoys) if (!isJoker(t) && tileColor(t).index == c) tileNumber(t)};
+    if (decoyN.isNotEmpty && jokers > 0 && _runFillable(decoyN, jokers)) return true;
+    if (coreN.isNotEmpty && decoyN.isNotEmpty && _mixedRunPossible(coreN, decoyN, jokers)) return true;
+  }
+  return false;
+}
+
+bool _runFillable(Set<int> nums, int jokers) {
+  if (nums.isEmpty) return false;
+  for (var lo = 1; lo <= 11; lo++) {
+    for (var hi = lo + 2; hi <= 13; hi++) {
+      var need = 0, used = 0;
+      for (var n = lo; n <= hi; n++) {
+        if (nums.contains(n)) {
+          used++;
+        } else {
+          need++;
+        }
+      }
+      if (used > 0 && need <= jokers) return true;
+    }
+  }
+  return false;
+}
+
+bool _mixedRunPossible(Set<int> a, Set<int> b, int jokers) {
+  for (var lo = 1; lo <= 11; lo++) {
+    for (var hi = lo + 2; hi <= 13; hi++) {
+      var need = 0, hasA = false, hasB = false;
+      for (var n = lo; n <= hi; n++) {
+        if (a.contains(n)) {
+          hasA = true;
+        } else if (b.contains(n)) {
+          hasB = true;
+        } else {
+          need++;
+        }
+      }
+      if (hasA && hasB && need <= jokers) return true;
+    }
+  }
+  return false;
+}
+
+/// Whether [decoys] added to a core whose solutions are already cached still leave exactly
+/// one equivalent end board. If the decoys cannot mix with the core, only the small decoy
+/// pile is re-solved. Otherwise the combined pile is searched and stopped at the first
+/// non-equivalent solution.
+bool decoysPreserveUniqueness({
+  required List<int> coreTiles,
+  required List<List<List<int>>> coreSolutions,
+  required List<List<int>> decoys,
+  int limit = kMasterSolutionLimit,
+  int nodeLimit = 20000,
+}) {
+  if (coreSolutions.isEmpty) return false;
+  final dTiles = [for (final s in decoys) ...s];
+  final coreSol = assignJokerIds(coreSolutions.first, coreTiles);
+  final intended = canonicalSolution([...coreSol, ...decoys]);
+
+  bool decoyPartitionsOk() {
+    final found = solveSearch(dTiles, limit: 80, nodeLimit: 20000);
+    if (!found.exhausted || found.solutions.isEmpty || found.solutions.length >= 80) return false;
+    for (final ds in found.solutions) {
+      final key = canonicalSolution([...coreSol, ...assignJokerIds(ds, dTiles)]);
+      if (key != intended) return false;
+    }
+    return true;
+  }
+
+  if (!decoysCanMix(coreTiles, dTiles)) return decoyPartitionsOk();
+  // Mixed sets are possible: confirm pure decoy rearrangements first, then search the
+  // combined pile, stopping at the first non-equivalent solution.
+  if (!decoyPartitionsOk()) return false;
+  return onlyEquivalentSolution([...coreTiles, ...dTiles], intended, limit: limit, nodeLimit: nodeLimit);
+}
+
+/// True when every found solution of [tiles] is equivalent to [intended], the solver
+/// finished, and at least one solution exists. Stops early on a second equivalence class.
+bool onlyEquivalentSolution(List<int> tiles, String intended, {int limit = kMasterSolutionLimit, int nodeLimit = kMasterNodeLimit}) {
+  final found = _solveSearchUntil(tiles, intended: intended, limit: limit, nodeLimit: nodeLimit);
+  return found.unique && found.exhausted && found.raw > 0;
+}
+
+class _UniqueScan {
+  final bool unique;
+  final bool exhausted;
+  final int raw;
+  const _UniqueScan({required this.unique, required this.exhausted, required this.raw});
+}
+
+/// Like [solveSearch], but stops as soon as a solution's canonical form is not [intended].
+_UniqueScan _solveSearchUntil(Iterable<int> tiles, {required String intended, int limit = kMasterSolutionLimit, int nodeLimit = kMasterNodeLimit}) {
+  final all = tiles.toList();
+  final pile = _Pile.of(all);
+  var raw = 0;
+  var nodes = 0;
+  var cap = false;
+  var other = false;
+  final cur = <List<int>>[];
+  final dead = <String>{};
+  bool rec() {
+    if (other) return true;
+    if (raw >= limit) return true;
+    if (++nodes > nodeLimit) {
+      cap = true;
+      return true;
+    }
+    final low = pile.lowest();
+    if (low == null) {
+      if (pile.jokers != 0) return false;
+      raw++;
+      final mapped = assignJokerIds([for (final s in cur) List.of(s)], all);
+      if (canonicalSolution(mapped) != intended) {
+        other = true;
+        return true;
+      }
+      return true;
+    }
+    final key = pile.key;
+    if (dead.contains(key)) return false;
+    final (c, n) = low;
+    pile.take([_t(c, n)]);
+    final cands = _setsWith(pile, c, n);
+    pile.give([_t(c, n)]);
+    var any = false;
+    for (final s in cands) {
+      pile.take(s);
+      cur.add(s);
+      if (rec()) any = true;
+      cur.removeLast();
+      pile.give(s);
+      if (other || raw >= limit || cap) return true;
+    }
+    if (!any) dead.add(key);
+    return any;
+  }
+
+  rec();
+  if (other) return const _UniqueScan(unique: false, exhausted: true, raw: 0);
+  if (cap || raw >= limit) return _UniqueScan(unique: false, exhausted: false, raw: raw);
+  return _UniqueScan(unique: raw > 0, exhausted: true, raw: raw);
+}
+
+/// Whether a starting table should stay readable on a phone (portrait and landscape):
+/// at most [maxRows] rows of [width] columns, counting the gap between neighbouring sets.
+bool puzzleStartFits(List<List<int>> board, {int width = 16, int maxRows = 5}) {
+  var row = 0, col = 0;
+  for (final s in board) {
+    if (s.length > width) return false;
+    if (col > 0 && col + s.length > width) {
+      row++;
+      col = 0;
+    }
+    col += s.length + 1;
+  }
+  final rows = board.isEmpty ? 0 : row + 1;
+  return rows <= maxRows;
+}
+
+class _CanonRun {
+  int color;
+  int lo;
+  int hi;
+  final Set<int> jokerValues;
+  _CanonRun(this.color, this.lo, this.hi, this.jokerValues);
+  int get length => hi - lo + 1;
+}
+
+class _CanonGroup {
+  final int number;
+  final Set<int> colors;
+  int jokers;
+  _CanonGroup(this.number, this.colors, this.jokers);
+  int get size => colors.length + jokers;
+}
+
+/// A stable key for a solved board under pointless-move equivalence: joining or splitting
+/// touching runs, and moving a run-end tile to or from a group of the same number, don't
+/// change the key. Identical tiles (same colour and number) are interchangeable. Jokers
+/// stay in the role they have in this solution (the value they stand for).
+String canonicalSolution(List<List<int>> sets) {
+  final runs = <_CanonRun>[];
+  final groups = <int, _CanonGroup>{};
+  for (final s in sets) {
+    final info = analyzeMeld(s);
+    if (info == null) return 'invalid';
+    if (info.kind == MeldKind.run) {
+      final real = s.firstWhere((t) => !isJoker(t));
+      final jok = <int>{};
+      for (var i = 0; i < s.length; i++) {
+        if (isJoker(s[i])) jok.add(info.values[i]);
+      }
+      runs.add(_CanonRun(tileColor(real).index, info.values.first, info.values.last, jok));
+    } else {
+      final n = info.values.first;
+      final colors = <int>{};
+      var jok = 0;
+      for (final t in s) {
+        if (isJoker(t)) {
+          jok++;
+        } else {
+          colors.add(tileColor(t).index);
+        }
+      }
+      // One group per number in a unique-tile puzzle.
+      final g = groups[n];
+      if (g == null) {
+        groups[n] = _CanonGroup(n, colors, jok);
+      } else {
+        g.colors.addAll(colors);
+        g.jokers += jok;
+      }
+    }
+  }
+
+  bool joinTouching() {
+    var changed = false;
+    final byColor = <int, List<_CanonRun>>{};
+    for (final r in runs) {
+      (byColor[r.color] ??= []).add(r);
+    }
+    runs.clear();
+    for (final list in byColor.values) {
+      list.sort((a, b) => a.lo.compareTo(b.lo));
+      _CanonRun? cur;
+      for (final r in list) {
+        if (cur != null && r.lo <= cur.hi + 1) {
+          if (r.hi > cur.hi) cur.hi = r.hi;
+          cur.jokerValues.addAll(r.jokerValues);
+          changed = true;
+        } else {
+          if (cur != null) runs.add(cur);
+          cur = r;
+        }
+      }
+      if (cur != null) runs.add(cur);
+    }
+    return changed;
+  }
+
+  bool wouldTouchOther(_CanonRun r, int lo, int hi) {
+    for (final o in runs) {
+      if (identical(o, r) || o.color != r.color) continue;
+      if (lo <= o.hi + 1 && hi + 1 >= o.lo) return true;
+    }
+    return false;
+  }
+
+  // 1. Join touching same-colour runs (1-2-3 next to 4-5-6 is one run).
+  joinTouching();
+
+  // 2. Grow runs from group tiles that can sit on a run end, when both stay valid,
+  //    but not when that would bridge a gap to another run of the same colour.
+  var grew = true;
+  while (grew) {
+    grew = false;
+    for (final r in List.of(runs)) {
+      for (final end in [r.lo - 1, r.hi + 1]) {
+        if (end < 1 || end > 13) continue;
+        if (r.jokerValues.contains(end)) continue;
+        final g = groups[end];
+        if (g == null || !g.colors.contains(r.color) || g.size - 1 < 3) continue;
+        final newLo = math.min(r.lo, end);
+        final newHi = math.max(r.hi, end);
+        if (wouldTouchOther(r, newLo, newHi)) continue;
+        g.colors.remove(r.color);
+        if (end < r.lo) {
+          r.lo = end;
+        } else {
+          r.hi = end;
+        }
+        grew = true;
+      }
+    }
+  }
+  joinTouching();
+
+  // 3. Give flexible run-end tiles (real tiles, not jokers) to groups when every such
+  //    give on the same run can be done at once and the run stays valid. If both ends
+  //    cannot be given together, keep the longer run.
+  for (final r in runs) {
+    bool canGive(int n) {
+      if (n < 1 || n > 13) return false;
+      if (r.jokerValues.contains(n)) return false;
+      final g = groups[n];
+      if (g == null || g.size >= 4 || g.colors.contains(r.color)) return false;
+      return true;
+    }
+
+    final giveLo = canGive(r.lo);
+    final giveHi = canGive(r.hi);
+    var nextLo = r.lo, nextHi = r.hi;
+    if (giveLo) nextLo++;
+    if (giveHi) nextHi--;
+    if (nextHi - nextLo + 1 < 3) continue;
+    if (giveLo) {
+      (groups[r.lo] ??= _CanonGroup(r.lo, {}, 0)).colors.add(r.color);
+      r.lo = nextLo;
+    }
+    if (giveHi) {
+      (groups[r.hi] ??= _CanonGroup(r.hi, {}, 0)).colors.add(r.color);
+      r.hi = nextHi;
+    }
+  }
+
+  const letters = ['r', 'b', 'y', 'k'];
+  final parts = <String>[];
+  for (final r in runs) {
+    final jok = ([...r.jokerValues]..sort()).join(',');
+    parts.add('r${letters[r.color]}:${r.lo}-${r.hi}:J$jok');
+  }
+  for (final n in groups.keys.toList()..sort()) {
+    final g = groups[n]!;
+    if (g.size < 3) continue;
+    final cols = ([...g.colors]..sort()).map((c) => letters[c]).join();
+    parts.add('g$n:$cols${'J' * g.jokers}');
+  }
+  parts.sort();
+  return parts.join('|');
+}
 
 /// Same puzzle with the colours swapped (dedupe): the smallest text over all 24 colour
 /// orders, joker ids ignored.
@@ -1256,11 +1867,14 @@ final List<List<int>> _perms = () {
 /// Endless mode: one new puzzle at [level] made on the phone (null after [maxTries]).
 Puzzle? generateOne(PuzzleLevel level, {math.Random? rng, int maxTries = 400}) {
   final g = PuzzleGenerator.withRandom(rng ?? math.Random());
-  for (var i = 0; i < maxTries; i++) {
+  final tries = level == PuzzleLevel.master ? math.max(maxTries, 800) : maxTries;
+  for (var i = 0; i < tries; i++) {
     final p = g.attempt(level);
     if (p != null) {
-      final c = checkPuzzle(p.board, p.rack);
-      if (c != null && levelOf(p.board, p.rack, c) == level) return p;
+      final c = checkPuzzle(p.board, p.rack,
+          limit: level == PuzzleLevel.master ? kMasterSolutionLimit : 40,
+          nodeLimit: level == PuzzleLevel.master ? kMasterNodeLimit : 80000);
+      if (c != null && levelOf(p.board, p.rack, c, decoyCount: p.decoyCount) == level) return p;
     }
   }
   return null;

@@ -1489,9 +1489,21 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                       ms: f.ms,
                       onDone: () => setState(() => _flights.remove(f)),
                     ),
-                  // Puzzles: solved, tidying up: hands off until the next deal.
-                  if (_puzzle != null && _puzzle!.phase != PuzzlePhase.playing)
+                  // Puzzles: solved, tidying up, or making the next endless Master puzzle.
+                  if (_puzzle != null && (_puzzle!.phase != PuzzlePhase.playing || _puzzle!.generating))
                     const Positioned.fill(child: AbsorbPointer(key: ValueKey('puzzleBlock'), child: SizedBox.expand())),
+                  if (_puzzle != null && _puzzle!.generating)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: Center(
+                          child: Column(mainAxisSize: MainAxisSize.min, children: [
+                            const SizedBox(width: 36, height: 36, child: CircularProgressIndicator(color: MK.gold, strokeWidth: 3)),
+                            const SizedBox(height: 12),
+                            Text('Making a puzzle…', key: const ValueKey('puzzleGenerating'), textAlign: TextAlign.center, style: MK.body(16, color: MK.gold)),
+                          ]),
+                        ),
+                      ),
+                    ),
                   // The deal: the table ignores input until every tile has landed.
                   if (_dealing) const Positioned.fill(child: AbsorbPointer(key: ValueKey('dealBlock'), child: SizedBox.expand())),
                   ..._chatBubbles(g, pv),

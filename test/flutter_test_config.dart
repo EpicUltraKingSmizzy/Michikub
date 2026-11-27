@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:michikub/app/puzzles.dart';
 import 'package:michikub/engine/host.dart';
 import 'package:michikub/ui/game_screen.dart';
 
@@ -9,5 +10,6 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   TableTuning.dealAnimation = false;
   // Opening auto-draw is off unless a test is about it (test/auto_draw_test.dart).
   GameHost.openingAutoDraw = false;
+  PuzzleSession.debugSyncGenerate = true;
   await testMain();
 }
